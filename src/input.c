@@ -309,19 +309,19 @@ void pollController(device *dev, SDL_GameController *controller) {
 		}
 		
 		// d-pad
-		if (SDL_GameControllerGetButton(controller, padbinds.up)) {
+		if (getButton(controller, padbinds.up)) {
 			dev->controlData[2] |= 0x01 << 4;
 			dev->controlData[10] = 0xFF;
 		}
-		if (SDL_GameControllerGetButton(controller, padbinds.right)) {
+		if (getButton(controller, padbinds.right)) {
 			dev->controlData[2] |= 0x01 << 5;
 			dev->controlData[8] = 0xFF;
 		}
-		if (SDL_GameControllerGetButton(controller, padbinds.down)) {
+		if (getButton(controller, padbinds.down)) {
 			dev->controlData[2] |= 0x01 << 6;
 			dev->controlData[11] = 0xFF;
 		}
-		if (SDL_GameControllerGetButton(controller, padbinds.left)) {
+		if (getButton(controller, padbinds.left)) {
 			dev->controlData[2] |= 0x01 << 7;
 			dev->controlData[9] = 0xFF;
 		}
@@ -357,6 +357,58 @@ void pollController(device *dev, SDL_GameController *controller) {
 	}
 }
 
+// global store for which hardcoded keys are overriden by user binds
+struct keyOverrides {
+	uint8_t menu;
+	uint8_t accept;
+	uint8_t up;
+	uint8_t down;
+	uint8_t left;
+	uint8_t right;
+} keyOverrides;
+
+void setKeyOverrides() {
+	// initialize overrides to all false
+	memset(&keyOverrides, 0, sizeof(keyOverrides));
+
+	// pretty gnarly code, but iterate through all keybinds and mark any overriden keys
+	for (SDL_Scancode *i = &keybinds; i < &keybinds + (sizeof(keybinds) / sizeof(SDL_Scancode)); i++) {
+		switch (*i) {
+		case SDL_SCANCODE_ESCAPE:
+			if (keybinds.menu == SDL_SCANCODE_ESCAPE) {
+				keyOverrides.menu = 0;	// if menu is being overridden by esc, this may cause unintended input bounces on text entry.  so just ignore
+			} else {
+				keyOverrides.menu = 1;
+			}
+			
+			printf("MENU OVERRIDE\n");
+			break;
+		case SDL_SCANCODE_RETURN:
+			keyOverrides.accept = 1;
+			printf("ACCEPT OVERRIDE\n");
+			break;
+		case SDL_SCANCODE_UP:
+			keyOverrides.up = 1;
+			printf("UP OVERRIDE\n");
+			break;
+		case SDL_SCANCODE_DOWN:
+			keyOverrides.down = 1;
+			printf("DOWN OVERRIDE\n");
+			break;
+		case SDL_SCANCODE_LEFT:
+			keyOverrides.left = 1;
+			printf("LEFT OVERRIDE\n");
+			break;
+		case SDL_SCANCODE_RIGHT:
+			keyOverrides.right = 1;
+			printf("RIGHT OVERRIDE\n");
+			break;
+		default:
+			break;
+		}
+	}
+}
+
 void pollKeyboard(device *dev) {
 	dev->isValid = 1;
 	dev->isPluggedIn = 1;
@@ -364,7 +416,9 @@ void pollKeyboard(device *dev) {
 	uint8_t *keyboardState = SDL_GetKeyboardState(NULL);
 
 	// buttons
-	if (keyboardState[keybinds.menu] && keybinds.menu != SDL_SCANCODE_ESCAPE) {	// is esc is bound to menu, it will only interfere with hardcoded keybinds.  similar effect on enter but i can't detect the things needed to work there
+	// if menu is pressed, if the bind isn't esc, 
+	if (keyboardState[keybinds.menu] && 
+		((!isUsingHardCodeControls) && (keybinds.menu != SDL_SCANCODE_ESCAPE))) {	// is esc is bound to menu, it will only interfere with hardcoded keybinds
 		dev->controlData[2] |= 0x01 << 3;
 	}
 	if (keyboardState[keybinds.cameraToggle]) {
@@ -410,19 +464,19 @@ void pollKeyboard(device *dev) {
 	}
 		
 	// d-pad
-	if (keyboardState[keybinds.up] || (isUsingHardCodeControls && keyboardState[SDL_SCANCODE_UP])) {
+	if (keyboardState[keybinds.up] || ((isUsingHardCodeControls && !keyOverrides.up) && keyboardState[SDL_SCANCODE_UP])) {
 		dev->controlData[2] |= 0x01 << 4;
 		dev->controlData[10] = 0xFF;
 	}
-	if (keyboardState[keybinds.right] || (isUsingHardCodeControls && keyboardState[SDL_SCANCODE_RIGHT])) {
+	if (keyboardState[keybinds.right] || ((isUsingHardCodeControls && !keyOverrides.right) && keyboardState[SDL_SCANCODE_RIGHT])) {
 		dev->controlData[2] |= 0x01 << 5;
 		dev->controlData[8] = 0xFF;
 	}
-	if (keyboardState[keybinds.down] || (isUsingHardCodeControls && keyboardState[SDL_SCANCODE_DOWN])) {
+	if (keyboardState[keybinds.down] || ((isUsingHardCodeControls && !keyOverrides.down) && keyboardState[SDL_SCANCODE_DOWN])) {
 		dev->controlData[2] |= 0x01 << 6;
 		dev->controlData[11] = 0xFF;
 	}
-	if (keyboardState[keybinds.left] || (isUsingHardCodeControls && keyboardState[SDL_SCANCODE_LEFT])) {
+	if (keyboardState[keybinds.left] || ((isUsingHardCodeControls && !keyOverrides.left) && keyboardState[SDL_SCANCODE_LEFT])) {
 		dev->controlData[2] |= 0x01 << 7;
 		dev->controlData[9] = 0xFF;
 	}
@@ -670,6 +724,8 @@ void __cdecl initManager(manager* manager, HINSTANCE hinstance, HWND hwnd) {
 	loadKeyBinds(&keybinds, &isUsingHardCodeControls);
 	loadControllerBinds(&padbinds);
 
+	setKeyOverrides();
+
 	newDevice(manager, 0);
 
 	callFunc((void *)0x00403bb0);    // not sure what this is, but it needs to be called or the game crashes
@@ -684,8 +740,17 @@ int __stdcall getVKeyboardState(uint8_t *out) {
 
 	for (int i = 0; i < keyCount; i++) {
 		if (keystate[i]) {
-			int idx = vkeyLUT[i];
-			out[idx] = 0x80;
+			// if not in keyboard, check that the key being pressed is not overridden
+			if (isKeyboardTyping() || 
+				!(i == SDL_SCANCODE_ESCAPE && keyOverrides.menu) &&
+				!(i == SDL_SCANCODE_RETURN && keyOverrides.accept) &&
+				!(i == SDL_SCANCODE_UP && keyOverrides.up) &&
+				!(i == SDL_SCANCODE_DOWN && keyOverrides.down) &&
+				!(i == SDL_SCANCODE_LEFT && keyOverrides.left) &&
+				!(i == SDL_SCANCODE_RIGHT && keyOverrides.right)) {
+				int idx = vkeyLUT[i];
+				out[idx] = 0x80;
+			}
 		}
 	}
 

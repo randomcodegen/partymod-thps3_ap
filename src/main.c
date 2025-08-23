@@ -14,7 +14,7 @@
 
 #define VERSION_NUMBER_MAJOR 1
 #define VERSION_NUMBER_MINOR 1
-#define VERSION_NUMBER_PATCH 3
+#define VERSION_NUMBER_PATCH 4
 
 int __stdcall playIntroMovie(char *filename, int unk) {
 	void *(__stdcall *getMoviePlayer)(int) = (void *)0x00406d40;
@@ -461,8 +461,17 @@ void *origCreateDevice = NULL;
 int __fastcall createDeviceWrapper(void *id3d8, void *pad, void *id3d8again, uint32_t adapter, uint32_t type, void *hwnd, uint32_t behaviorFlags, uint32_t *presentParams, void *devOut) {
 	int (__fastcall *createDevice)(void *, void *, void *, uint32_t, uint32_t, void *, uint32_t, uint32_t *, void *) = (void *)origCreateDevice;
 
+	presentParams[3] = 1;
+	presentParams[5] = 1;
 
-	presentParams[5] = 4;
+	if (presentParams[7]) {	// if windowed
+		presentParams[11] = 0;	// refresh rate
+		presentParams[12] = 0;	// swap interval
+	}
+	else {
+		presentParams[11] = 0;
+		presentParams[12] = 1;
+	}
 
 	int result = createDevice(id3d8, pad, id3d8again, adapter, type, hwnd, behaviorFlags, presentParams, devOut);
 
