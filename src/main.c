@@ -14,7 +14,7 @@
 
 #define VERSION_NUMBER_MAJOR 1
 #define VERSION_NUMBER_MINOR 1
-#define VERSION_NUMBER_PATCH 4
+#define VERSION_NUMBER_PATCH 6
 
 int __stdcall playIntroMovie(char *filename, int unk) {
 	void *(__stdcall *getMoviePlayer)(int) = (void *)0x00406d40;
