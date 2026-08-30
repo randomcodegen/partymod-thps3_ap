@@ -99,20 +99,11 @@ def test_mainmenu_routes_custom_skater_entry_through_its_target() -> None:
     source += entry(
         "Change Appearance", "Player2ToChangeAppearance", appearance_link
     )
-    source += (
-        b"\x23" + checksum_token("Player1ToChangeAppearance") + b"\x01"
-        + checksum_token("SetCurrentSkaterProfile") + b"\x17\x00\x00\x00\x00"
-        + b"\x01\x24"
-        + b"\x23" + checksum_token("Player2ToChangeAppearance") + b"\x01"
-        + checksum_token("SetCurrentSkaterProfile") + b"\x17\x01\x00\x00\x00"
-        + b"\x01\x24"
-    )
     target = restrict_custom_skater_entries(source)
 
-    assert checksum_token("link") not in target
+    assert checksum_token("pre_cas_main_menu") not in target
     assert string_token("link_to_cas") in target
-    assert target.count(checksum_token("APCustomSkaterAllowed")) == 2
-    assert target.count(checksum_token("SwitchToMenu")) == 2
+    assert target.count(appearance_link) == 7
 
 
 def test_casmenu_blocks_unselected_custom_skater_transition() -> None:

@@ -110,7 +110,7 @@ def add_competition_progress_elements(source: bytes) -> bytes:
 
     if not source or source[-1] != 0:
         raise ValueError("mainmenu.qb does not end with the QB EOF token")
-    names = (medal_id, gap_id, item_id, "APCustomSkaterAllowed")
+    names = (medal_id, gap_id, item_id)
     if any(name.encode("ascii") + b"\x00" in source for name in names):
         raise ValueError("competition progress checksum names already exist")
     records = b"".join(
@@ -178,13 +178,6 @@ def disable_options_and_pros_autoload(source: bytes) -> bytes:
 
 
 def restrict_custom_skater_entries(source: bytes) -> bytes:
-    def after_newline(offset: int) -> int:
-        if source[offset:offset + 1] == b"\x01":
-            return offset + 1
-        if source[offset:offset + 1] == b"\x02":
-            return offset + 5
-        raise ValueError(f"expected QB newline at {offset}")
-
     linked_entry = (
         string_token("Create-a-Skater")
         + checksum_token("link") + b"\x07" + checksum_token("pre_cas_main_menu")
@@ -199,52 +192,7 @@ def restrict_custom_skater_entries(source: bytes) -> bytes:
         string_token("Create-a-Skater")
         + checksum_token("target") + b"\x07" + string_token("link_to_cas")
     )
-    source = source.replace(linked_entry, unlinked_entry, 1)
-
-    def unlink_appearance(target: str, expected: int) -> None:
-        nonlocal source
-        linked = (
-            string_token("Change Appearance")
-            + checksum_token("link") + b"\x07" + checksum_token("cas_menu_container")
-            + checksum_token("target") + b"\x07" + string_token(target)
-        )
-        if source.count(linked) != expected:
-            raise ValueError(
-                f"expected {expected} Change Appearance entries for {target}, "
-                f"found {source.count(linked)}"
-            )
-        unlinked = (
-            string_token("Change Appearance")
-            + checksum_token("target") + b"\x07" + string_token(target)
-        )
-        source = source.replace(linked, unlinked)
-
-    unlink_appearance("Player1ToChangeAppearance", 6)
-    unlink_appearance("Player2ToChangeAppearance", 1)
-
-    def guard_appearance_script(name: str, profile: int) -> None:
-        nonlocal source
-        script = b"\x23" + checksum_token(name)
-        if source.count(script) != 1:
-            raise ValueError(f"expected one {name} script, found {source.count(script)}")
-        start = after_newline(source.index(script) + len(script))
-        command = checksum_token("SetCurrentSkaterProfile") + integer_token(profile)
-        if source[start:start + len(command)] != command:
-            raise ValueError(f"{name} has an unexpected body")
-        end = after_newline(start + len(command))
-        guarded = (
-            b"\x25\x0e" + checksum_token("APCustomSkaterAllowed") + b"\x0f\x01"
-            + command + b"\x01"
-            + checksum_token("SwitchToMenu")
-            + checksum_token("menu") + b"\x07" + checksum_token("cas_menu_container")
-            + checksum_token("DoNotMakeRoot") + b"\x01"
-            + b"\x28\x01"
-        )
-        source = source[:start] + guarded + source[end:]
-
-    guard_appearance_script("Player1ToChangeAppearance", 0)
-    guard_appearance_script("Player2ToChangeAppearance", 1)
-    return source
+    return source.replace(linked_entry, unlinked_entry, 1)
 
 
 def main() -> None:
