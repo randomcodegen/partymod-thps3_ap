@@ -1,0 +1,317 @@
+{
+  "airport": {
+    "Escalatin' the Situation!": {
+      "replace_auto": true,
+      "tint": ["LowArea_07", "LowArea_40", "StartMidArea_132"],
+      "markers": ["LowArea_07"]
+    },
+    "Grind Baggage Claim": {
+      "tint": ["LowArea_02"]
+    },
+    "Heliport Baggage": {
+      "rail_paths": [
+        ["TRG_Rail_710", "TRG_Rail_2129"],
+        ["TRG_Rail_689", "TRG_Rail_2128"]
+      ]
+    },
+    "Rail Hop": {
+      "replace_auto": true,
+      "tint": [
+        "EndArea_136",
+        "EndArea_55560",
+        "EndArea_4097",
+        "EndArea_55579"
+      ],
+      "markers": ["TRG_Rail_1679", "TRG_Rail_1700"]
+    },
+    "Spotted Bags": {
+      "replace_auto": true,
+      "tint": ["StartMidArea_132"],
+      "markers": ["LowArea_07"]
+    },
+    "Gate Transfer!": {
+      "markers": [
+        "TRGP_GateGap01",
+        "TRGP_GateGap02",
+        "TRGP_GateGap03",
+        "TRGP_GateGap04",
+        "TRGP_GateGap05",
+        "TRGP_GateGap06"
+      ]
+    }
+  },
+  "canada": {
+    "AHHH!  MY HEAD!": {
+      "markers": ["Wild_Totem_Head"]
+    },
+    "Fence Extension": {
+      "replace_auto": true,
+      "rail_paths": [
+        ["TRG_Conc_Park_Rail809", "TRG_Conc_Park_Rail802"],
+        ["TRG_Conc_Park_Rail107", "TRG_Conc_Park_Rail815"]
+      ]
+    },
+    "Funbox to Rail Stomp": {
+      "tint": ["Conc_Park_Ramp_Spine"]
+    },
+    "Nice Save, cheater": {
+      "replace_auto": true,
+      "tint": ["Wild_Tree_Path01"],
+      "rail_paths": [["TRG_Conc_Park_Rail522", "TRG_Conc_Park_Rail819"]]
+    },
+    "Over the Hump": {
+      "markers": ["TRG_Conc_Park_Rail82", "TRG_Conc_Park_Rail87"]
+    }
+  },
+  "cruise_ship": {
+    "808 2 Box": {
+      "replace_auto": true,
+      "markers": ["TRG_892", "TRG_895", "TRG_930", "TRG_932"]
+    },
+    "Down in Front!": {
+      "replace_auto": true,
+      "no_markers": true,
+      "tint": ["sf_Flags01"],
+      "markers": ["TRG_Rail2702", "TRG_Rail2703"]
+    },
+    "Flag Line Hop": {
+      "no_markers": true,
+      "tint": ["sf_WingRailing02", "sf_RoofBumperBox"]
+    },
+    "King of the World!": {
+      "replace_auto": true,
+      "no_markers": true,
+      "tint": ["sf_BowVert"],
+      "markers": ["TRG_Rail2527"]
+    },
+    "Loading Deck Air": {
+      "replace_auto": true,
+      "no_markers": true,
+      "tint": ["sf_Ramp01", "sf_Ramp02"],
+      "markers": ["sft_EndAnchorChainAir03"]
+    },
+    "Lower Comm Lip": {
+      "replace_auto": true,
+      "no_markers": true,
+      "tint": ["sf_HelipadQuarterPipe01", "sf_HelipadQuarterPipe02"],
+      "markers": ["TRG_Rail2690", "TRG_Rail2721"]
+    },
+    "Abandon Atrium!": {
+      "replace_auto": true,
+      "no_markers": true,
+      "markers": ["sl_Lifeboat01", "sl_Lifeboat03", "sl_Lifeboat05"],
+      "tint": [
+        "sl_AtriumOuterWallKicker06",
+        "sl_AtriumOuterWallKicker07",
+        "sl_AtriumVerts01",
+        "sl_AtriumVerts02",
+        "sl_AtriumVerts03",
+        "sl_AtriumVerts04",
+        "sl_AtriumVerts06",
+        "sl_AtriumVerts07",
+        "sl_AtriumVerts08",
+        "sl_AtriumVerts09",
+        "sl_AtriumVerts10",
+        "sl_AtriumVerts12",
+        "sl_AtriumVerts13",
+        "sl_AtriumVerts14",
+        "sl_AtriumVerts15",
+        "sl_AtriumVerts16",
+        "sl_AtriumVerts17",
+        "sl_AtriumVerts18",
+        "sl_AtriumVerts19",
+        "slc_AtriumVertCap"
+      ]
+    },
+    "Are those Real?": {
+      "replace_auto": true,
+      "no_markers": true,
+      "markers": ["st_TanChairA01"],
+      "tint": [
+        "st_TanChairA01",
+        "st_TanChairA02",
+        "st_TanChairA03",
+        "st_TanChairA04",
+        "st_TanChairA05",
+        "st_TanChairA06",
+        "st_TanChairA07",
+        "st_TanChairA08",
+        "st_TanChairA09",
+        "st_TanChairA10",
+        "st_TanChairA11",
+        "st_TanChairA12",
+        "st_TanChairA13",
+        "st_TanChair01",
+        "st_TanChair02",
+        "st_TanChair03",
+        "st_TanChair04",
+        "st_TanChair05",
+        "st_TanChair06",
+        "st_TanChair08",
+        "st_TanChair09",
+        "st_TanChair10",
+        "st_TanChair11",
+        "st_TanChair12",
+        "st_TanChair13"
+      ]
+    },
+    "Sun Block": {"copy": "Are those Real?"},
+    "Sun Worshipper Pop": {"copy": "Are those Real?"},
+    "Cresting the Peaks": {"copy": "Are those Real?"},
+    "Shop-Side Manual": {
+      "replace_auto": true,
+      "no_markers": true,
+      "tint": ["sr_Floor03"],
+      "markers": ["sr_WoodRamp01", "sr_WoodRamp03"]
+    },
+    "The Flagline Spectacular!": {
+      "replace_auto": true,
+      "no_markers": true,
+      "tint": [
+        "st_Flag01",
+        "st_Flag02",
+        "st_Flag05",
+        "st_Flag06",
+        "st_Pool01",
+        "st_Pool02",
+        "st_PoolMosaic01",
+        "st_PoolMosaic02"
+      ]
+    },
+    "Wave Wall Plant": {
+      "replace_auto": true,
+      "no_markers": true,
+      "tint": ["sf_WallVert", "sf_UpperRailing"],
+      "markers": ["TRG_Rail1882"]
+    },
+    "Itsy Bitsy": {"copy": "Are those Real?"},
+    "Teeny Weeny": {"copy": "Are those Real?"},
+    "Purple Polka Dotted": {"copy": "Are those Real?"},
+    "String Bikini": {"copy": "Are those Real?"},
+    "Tan Air": {"copy": "Are those Real?"},
+    "Lounge Clearance": {"copy": "Are those Real?"},
+    "Chaise Cool": {"copy": "Are those Real?"},
+    "Silicone": {"copy": "Are those Real?"},
+    "Cherry": {"copy": "Are those Real?"},
+    "Catchin' Wood": {"copy": "Are those Real?"},
+    "Hey, My Hair!": {"copy": "Are those Real?"},
+    "Over the Tan Line": {"copy": "Are those Real?"},
+    "No, Don't Get Up": {"copy": "Are those Real?"}
+  },
+  "skater_island": {
+    "Hell No H2O Gap": {
+      "replace_auto": true,
+      "tint": ["SI_VertRamp_03", "SI_CeilingPipe01"],
+      "markers": ["SI_CeilingPipe01"]
+    },
+    "Mast Transfer": {
+      "replace_auto": true,
+      "tint": ["SI_ShipDeckQP01"],
+      "markers": ["SI_ShipDeckQP01"]
+    },
+    "Russian Tease Gap": {
+      "replace_auto": true,
+      "tint": ["SI_SHALLOW_BOWL02", "SI_BoxLight01"],
+      "markers": ["SI_BoxLight01"]
+    },
+    "Surf's Up": {
+      "replace_auto": true,
+      "tint": ["SI_Surfboard"],
+      "markers": ["SI_Surfboard"]
+    },
+    "The Dreamer Gap": {
+      "replace_auto": true,
+      "tint": ["SI_CeilingPipe04"],
+      "markers": ["TRG_Rail_CeilingPipeA38"]
+    },
+    "Drive Thru Window": {
+      "replace_auto": true,
+      "markers": ["TRGP_Gap_Start_DriveThru", "TRGP_Gap_End_DriveThru"]
+    },
+    "The Flame Transfer": {
+      "replace_auto": true,
+      "tint": [
+        "SI_VertRamp_03",
+        "SI_VertRamp_01",
+        "SI_PEANUT_COPING01",
+        "SI_PEANUT_BOWL03"
+      ],
+      "markers": ["SI_VertRamp_03", "TRGP_GapEnd_TheFlame"]
+    }
+  },
+  "los_angeles": {
+    "alley-oop!": {
+      "tint": ["Pershing_Floor_04"]
+    },
+    "Burrito Carnitas": {
+      "replace_auto": true,
+      "rail_paths": [["TRG_Rail809", "TRG_Rail814"]]
+    },
+    "Gettin a Learn On!": {
+      "replace_auto": true,
+      "rail_paths": [
+        ["TRG_Rail83", "TRG_Rail82"],
+        ["TRG_Rail61", "TRG_Rail60"]
+      ]
+    },
+    "Stair Skip!": {
+      "replace_auto": true,
+      "rail_paths": [
+        ["TRG_Rail64", "TRG_Rail63"],
+        ["TRG_Rail56", "TRG_Rail54"]
+      ]
+    }
+  },
+  "tokyo": {
+    "MEJI GAP": {
+      "markers": ["TRG_476", "TRG_GS_481"],
+      "rail_paths": [["TRG_GS_491", "TRG_492"]]
+    },
+    "SHOCHU GAP": {
+      "rail_paths": [["TRG_GS_712", "TRG_1597"]]
+    },
+    "SUNAGIMO GAP": {
+      "rail_paths": [
+        ["TRG_GS_602", "TRG_603"],
+        ["TRG_GS_628", "TRG_629"]
+      ]
+    },
+    "TRICKY ONIGIRI TRANSFER": {
+      "replace_auto": true,
+      "tint": ["Tok_Mid_Funbox_W_00", "Tok_Mid_Funbox_E_00"]
+    }
+  },
+  "suburbia": {
+    "Howdy Neighbor Part I": {
+      "tint": ["SUB_CPOOL_05"]
+    },
+    "Howdy Neighbor Part II": {
+      "tint": ["RichRampNew01", "SUB_CPOOL_05"]
+    },
+    "Mansion on Wheels Transfer": {
+      "tint": ["SUB_TRamp01", "SUB_TExtraRamp01_fu"]
+    },
+    "Manual the Sac!": {
+      "tint": ["SUB_street_sidewalk_a"]
+    },
+    "Over Under Construction": {
+      "tint": ["SUB_plywood_03"]
+    },
+    "Raisin' the Bar!": {
+      "replace_tint": true,
+      "tint": ["SUB_nb_GrindBar01", "SUB_nude_ramp_01"]
+    },
+    "Smack City Gap": {
+      "replace_auto": true,
+      "tint": ["SUB_Rich_House_door"],
+      "markers": ["TRGP_Gap_Start_Smack", "TRGP_Gap_End_Smack"]
+    },
+    "Social Climber": {
+      "tint": ["SUB_NudeRamp"]
+    },
+    "Utopia Sign Gap": {
+      "replace_auto": true,
+      "tint": ["SUB_TRamp01", "SUB_TSign01"]
+    }
+  }
+}

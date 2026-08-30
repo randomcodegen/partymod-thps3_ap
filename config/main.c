@@ -5,7 +5,7 @@
 #include <CommCtrl.h>
 #include <uxtheme.h>
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 
 // configuration application for PARTYMOD
 

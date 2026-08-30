@@ -3,11 +3,12 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 
 #include <global.h>
 #include <patch.h>
 #include <config.h>
+#include <thps3_ap/bridge_c_api.h>
 
 // Lookup table that translates from SDL Scancodes to Microsoft Virtual Keys
 uint8_t vkeyLUT[285] = {
@@ -266,7 +267,10 @@ void pollController(device *dev, SDL_GameController *controller) {
 		if (getButton(controller, padbinds.cameraToggle)) {
 			dev->controlData[2] |= 0x01 << 0;
 		}
-		if (getButton(controller, padbinds.cameraSwivelLock)) {
+		uint8_t gapShortcut =
+			getButton(controller, CONTROLLER_BUTTON_LEFTSTICK) &&
+			getButton(controller, CONTROLLER_BUTTON_RIGHTSTICK);
+		if (!gapShortcut && getButton(controller, padbinds.cameraSwivelLock)) {
 			dev->controlData[2] |= 0x01 << 2;
 		}
 
@@ -533,6 +537,15 @@ int isKeyboardTyping() {
 
 void processEvent(SDL_Event *e) {
 
+	if (!THPS3AP_HasStateSnapshot() && (
+		e->type == SDL_CONTROLLERBUTTONDOWN ||
+		e->type == SDL_CONTROLLERAXISMOTION ||
+		e->type == SDL_MOUSEBUTTONDOWN ||
+		e->type == SDL_MOUSEBUTTONUP ||
+		e->type == SDL_MOUSEMOTION ||
+		e->type == SDL_KEYDOWN)) {
+		return;
+	}
 
 	switch (e->type) {
 		case SDL_CONTROLLERDEVICEADDED:
@@ -649,13 +662,85 @@ void __cdecl processController(device *dev) {
 	dev->controlData[6] = 127;
 	dev->controlData[7] = 127;
 
-	if (!isKeyboardTyping()) {
-		pollKeyboard(dev);
+	if (THPS3AP_HasStateSnapshot())
+	{
+		static uint8_t gapShortcutWasDown;
+		static uint8_t gapShortcutHoldActive;
+		static uint8_t gapShortcutLongHoldTriggered;
+		static uint32_t gapShortcutPressedAt;
+		static uint8_t losAngelesGeometryShortcutWasDown;
+		uint8_t gapShortcutDown = 0;
+		uint8_t losAngelesGeometryShortcutDown = 0;
+		if (!menuOnScreen() && !isKeyboardTyping()) {
+			const uint8_t *keyboardState = SDL_GetKeyboardState(NULL);
+			gapShortcutDown = keyboardState[SDL_SCANCODE_F8];
+			losAngelesGeometryShortcutDown = keyboardState[SDL_SCANCODE_F7];
+			for (int i = 0; i < controllerCount; ++i) {
+				uint8_t sticksDown =
+					getButton(controllerList[i], CONTROLLER_BUTTON_LEFTSTICK) &&
+					getButton(controllerList[i], CONTROLLER_BUTTON_RIGHTSTICK);
+				uint8_t shouldersDown =
+					getButton(controllerList[i], CONTROLLER_BUTTON_LEFTSHOULDER) &&
+					getButton(controllerList[i], CONTROLLER_BUTTON_RIGHTSHOULDER);
+				losAngelesGeometryShortcutDown |= sticksDown;
+				gapShortcutDown |= shouldersDown;
+			}
+		}
+		if (gapShortcutDown && !gapShortcutWasDown &&
+			!losAngelesGeometryShortcutDown) {
+			gapShortcutHoldActive = 1;
+			gapShortcutLongHoldTriggered = 0;
+			gapShortcutPressedAt = SDL_GetTicks();
+		}
+		if (gapShortcutDown && gapShortcutHoldActive &&
+			!gapShortcutLongHoldTriggered &&
+			(uint32_t)(SDL_GetTicks() - gapShortcutPressedAt) >= 1500u) {
+			THPS3AP_ToggleAllGapHighlights();
+			gapShortcutLongHoldTriggered = 1;
+		}
+		if (!gapShortcutDown && gapShortcutWasDown && gapShortcutHoldActive) {
+			if (!gapShortcutLongHoldTriggered) {
+				THPS3AP_AdvanceGapHighlight();
+			}
+			gapShortcutHoldActive = 0;
+		}
+		if (losAngelesGeometryShortcutDown &&
+			!losAngelesGeometryShortcutWasDown) {
+			THPS3AP_ToggleLosAngelesGeometry();
+		}
+		gapShortcutWasDown = gapShortcutDown;
+		losAngelesGeometryShortcutWasDown = losAngelesGeometryShortcutDown;
+		if (!isKeyboardTyping()) {
+			pollKeyboard(dev);
+		}
+
+		// TODO: maybe smart selection of active controller?
+		for (int i = 0; i < controllerCount; i++) {
+			pollController(dev, controllerList[i]);
+		}
 	}
 
-	// TODO: maybe smart selection of active controller?
-	for (int i = 0; i < controllerCount; i++) {
-		pollController(dev, controllerList[i]);
+	// Menus reuse the face buttons. Filter only the composed gameplay input so
+	// keyboard and controller follow the same AP permissions.
+	if (THPS3AP_HasStateSnapshot() && !menuOnScreen()) {
+		if (!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_GRIND)) {
+			dev->controlData[3] &= ~(0x01 << 4);
+			dev->controlData[12] = 0;
+		}
+		if (!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_GRAB)) {
+			dev->controlData[3] &= ~(0x01 << 5);
+			dev->controlData[13] = 0;
+		}
+		if (!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_FLIP)) {
+			dev->controlData[3] &= ~(0x01 << 7);
+			dev->controlData[15] = 0;
+		}
+		if (!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_REVERT)) {
+			dev->controlData[3] &= ~(0x01 << 0);
+			dev->controlData[18] = 0;
+			dev->controlData[3] &= ~(0x01 << 1);
+			dev->controlData[19] = 0;
+		}
 	}
 
 	dev->controlData[2] = ~dev->controlData[2];
@@ -737,6 +822,9 @@ int __stdcall getVKeyboardState(uint8_t *out) {
 	uint8_t *keystate = SDL_GetKeyboardState(&keyCount);
 
 	memset(out, 0, 256);
+	if (!THPS3AP_HasStateSnapshot()) {
+		return 1;
+	}
 
 	for (int i = 0; i < keyCount; i++) {
 		if (keystate[i]) {
@@ -766,6 +854,7 @@ int __stdcall getVKeyboardState(uint8_t *out) {
 }
 
 uint16_t __stdcall getShiftCtrlState(int key) {
+	if (!THPS3AP_HasStateSnapshot()) return 0;
 	if (key == 0x10 && SDL_GetModState() & KMOD_SHIFT) {
 		return 0x8000;
 	} else if (key == 0x11 && SDL_GetModState() & KMOD_CTRL) {
@@ -776,6 +865,7 @@ uint16_t __stdcall getShiftCtrlState(int key) {
 }
 
 uint16_t __stdcall getCapsState(int key) {
+	if (!THPS3AP_HasStateSnapshot()) return 0;
 	if (SDL_GetModState() & KMOD_CAPS) {
 		return 0x0001;
 	}
@@ -792,7 +882,9 @@ int processIntroEvent() {
 			case SDL_CONTROLLERBUTTONDOWN:
 			case SDL_KEYDOWN:
 			case SDL_MOUSEBUTTONDOWN:
-				if (result == 0) {
+				if (result == 0
+					&& THPS3AP_HasStateSnapshot()
+				) {
 					result = 1;
 				}
 				break;

@@ -1,0 +1,47 @@
+script AP_Refresh_Level_Menus {
+    if (GetGlobalFlag flag=LEVEL_UNLOCKED_FOUNDRY) {
+        MakeTextMenuElementStatic foundry_id nonstatic=1
+    } else {
+        MakeTextMenuElementStatic foundry_id
+    }
+    if (GetGlobalFlag flag=LEVEL_UNLOCKED_CANADA) {
+        MakeTextMenuElementStatic canada_id nonstatic=1
+    } else {
+        MakeTextMenuElementStatic canada_id
+    }
+    if (GetGlobalFlag flag=LEVEL_UNLOCKED_RIO) {
+        MakeTextMenuElementStatic rio_id nonstatic=1
+    } else {
+        MakeTextMenuElementStatic rio_id
+    }
+    if (GetGlobalFlag flag=LEVEL_UNLOCKED_SUBURBIA) {
+        MakeTextMenuElementStatic suburbia_id nonstatic=1
+    } else {
+        MakeTextMenuElementStatic suburbia_id
+    }
+    if (GetGlobalFlag flag=LEVEL_UNLOCKED_AIRPORT) {
+        MakeTextMenuElementStatic airport_id nonstatic=1
+    } else {
+        MakeTextMenuElementStatic airport_id
+    }
+    if (GetGlobalFlag flag=LEVEL_UNLOCKED_SKATERISLAND) {
+        MakeTextMenuElementStatic skatersisland_id nonstatic=1
+    } else {
+        MakeTextMenuElementStatic skatersisland_id
+    }
+    if (GetGlobalFlag flag=LEVEL_UNLOCKED_LOSANGELES) {
+        MakeTextMenuElementStatic la_id nonstatic=1
+    } else {
+        MakeTextMenuElementStatic la_id
+    }
+    if (GetGlobalFlag flag=LEVEL_UNLOCKED_TOKYO) {
+        MakeTextMenuElementStatic tokyo_id nonstatic=1
+    } else {
+        MakeTextMenuElementStatic tokyo_id
+    }
+    if (GetGlobalFlag flag=LEVEL_UNLOCKED_SHIP) {
+        MakeTextMenuElementStatic ship_id nonstatic=1
+    } else {
+        MakeTextMenuElementStatic ship_id
+    }
+}

@@ -1,0 +1,34 @@
+# Builds and generated binaries
+/build/
+/bridge/build/
+/src/patches.c
+/patcher/data.c
+/.vs/
+/vcpkg_installed/
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.lib
+*.exp
+*.user
+
+# Python tests
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Local diagnostics
+*.log
+*.dmp
+
+# Editors and Windows
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# Local notes
+docs/local/*
+/.pytest_tmp*/

@@ -1,0 +1,132 @@
+APGapMenu = {
+    type = scrollingmenu
+    id = APGapMenu
+    num_visible = 12
+    x = 100.0
+    y = 60.0
+    w = 440.0
+    h = 300.0
+    just_center_x
+    just_center_y
+    blue_top
+    parent = contain1
+    eventhandler = { type = backeventhandler link = game_menu }
+    children = [
+        { type = textmenuelement id = APGapMenuTitle text = "Remaining Gaps" static dont_gray drawer = title }
+        { type = textmenuelement id = APGapRow001 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352577 } }
+        { type = textmenuelement id = APGapRow002 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352578 } }
+        { type = textmenuelement id = APGapRow003 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352579 } }
+        { type = textmenuelement id = APGapRow004 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352580 } }
+        { type = textmenuelement id = APGapRow005 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352581 } }
+        { type = textmenuelement id = APGapRow006 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352582 } }
+        { type = textmenuelement id = APGapRow007 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352583 } }
+        { type = textmenuelement id = APGapRow008 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352584 } }
+        { type = textmenuelement id = APGapRow009 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352585 } }
+        { type = textmenuelement id = APGapRow010 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352586 } }
+        { type = textmenuelement id = APGapRow011 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352587 } }
+        { type = textmenuelement id = APGapRow012 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352588 } }
+        { type = textmenuelement id = APGapRow013 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352589 } }
+        { type = textmenuelement id = APGapRow014 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352590 } }
+        { type = textmenuelement id = APGapRow015 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352591 } }
+        { type = textmenuelement id = APGapRow016 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352592 } }
+        { type = textmenuelement id = APGapRow017 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352593 } }
+        { type = textmenuelement id = APGapRow018 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352594 } }
+        { type = textmenuelement id = APGapRow019 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352595 } }
+        { type = textmenuelement id = APGapRow020 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352596 } }
+        { type = textmenuelement id = APGapRow021 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352597 } }
+        { type = textmenuelement id = APGapRow022 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352598 } }
+        { type = textmenuelement id = APGapRow023 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352599 } }
+        { type = textmenuelement id = APGapRow024 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352600 } }
+        { type = textmenuelement id = APGapRow025 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352601 } }
+        { type = textmenuelement id = APGapRow026 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352602 } }
+        { type = textmenuelement id = APGapRow027 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352603 } }
+        { type = textmenuelement id = APGapRow028 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352604 } }
+        { type = textmenuelement id = APGapRow029 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352605 } }
+        { type = textmenuelement id = APGapRow030 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352606 } }
+        { type = textmenuelement id = APGapRow031 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352607 } }
+        { type = textmenuelement id = APGapRow032 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352608 } }
+        { type = textmenuelement id = APGapRow033 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352609 } }
+        { type = textmenuelement id = APGapRow034 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352610 } }
+        { type = textmenuelement id = APGapRow035 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352611 } }
+        { type = textmenuelement id = APGapRow036 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352612 } }
+        { type = textmenuelement id = APGapRow037 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352613 } }
+        { type = textmenuelement id = APGapRow038 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352614 } }
+        { type = textmenuelement id = APGapRow039 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352615 } }
+        { type = textmenuelement id = APGapRow040 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352616 } }
+        { type = textmenuelement id = APGapRow041 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352617 } }
+        { type = textmenuelement id = APGapRow042 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352618 } }
+        { type = textmenuelement id = APGapRow043 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352619 } }
+        { type = textmenuelement id = APGapRow044 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352620 } }
+        { type = textmenuelement id = APGapRow045 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352621 } }
+        { type = textmenuelement id = APGapRow046 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352622 } }
+        { type = textmenuelement id = APGapRow047 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352623 } }
+        { type = textmenuelement id = APGapRow048 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352624 } }
+        { type = textmenuelement id = APGapRow049 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352625 } }
+        { type = textmenuelement id = APGapRow050 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352626 } }
+        { type = textmenuelement id = APGapRow051 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352627 } }
+        { type = textmenuelement id = APGapRow052 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352628 } }
+        { type = textmenuelement id = APGapRow053 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352629 } }
+        { type = textmenuelement id = APGapRow054 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352630 } }
+        { type = textmenuelement id = APGapRow055 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352631 } }
+        { type = textmenuelement id = APGapRow056 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352632 } }
+        { type = textmenuelement id = APGapRow057 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352633 } }
+        { type = textmenuelement id = APGapRow058 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352634 } }
+        { type = textmenuelement id = APGapRow059 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352635 } }
+        { type = textmenuelement id = APGapRow060 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352636 } }
+        { type = textmenuelement id = APGapRow061 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352637 } }
+        { type = textmenuelement id = APGapRow062 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352638 } }
+        { type = textmenuelement id = APGapRow063 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352639 } }
+        { type = textmenuelement id = APGapRow064 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352640 } }
+        { type = textmenuelement id = APGapRow065 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352641 } }
+        { type = textmenuelement id = APGapRow066 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352642 } }
+        { type = textmenuelement id = APGapRow067 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352643 } }
+        { type = textmenuelement id = APGapRow068 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352644 } }
+        { type = textmenuelement id = APGapRow069 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352645 } }
+        { type = textmenuelement id = APGapRow070 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352646 } }
+        { type = textmenuelement id = APGapRow071 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352647 } }
+        { type = textmenuelement id = APGapRow072 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352648 } }
+        { type = textmenuelement id = APGapRow073 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352649 } }
+        { type = textmenuelement id = APGapRow074 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352650 } }
+        { type = textmenuelement id = APGapRow075 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352651 } }
+        { type = textmenuelement id = APGapRow076 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352652 } }
+        { type = textmenuelement id = APGapRow077 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352653 } }
+        { type = textmenuelement id = APGapRow078 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352654 } }
+        { type = textmenuelement id = APGapRow079 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352655 } }
+        { type = textmenuelement id = APGapRow080 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352656 } }
+        { type = textmenuelement id = APGapRow081 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352657 } }
+        { type = textmenuelement id = APGapRow082 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352658 } }
+        { type = textmenuelement id = APGapRow083 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352659 } }
+        { type = textmenuelement id = APGapRow084 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352660 } }
+        { type = textmenuelement id = APGapRow085 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352661 } }
+        { type = textmenuelement id = APGapRow086 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352662 } }
+        { type = textmenuelement id = APGapRow087 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352663 } }
+        { type = textmenuelement id = APGapRow088 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352664 } }
+        { type = textmenuelement id = APGapRow089 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352665 } }
+        { type = textmenuelement id = APGapRow090 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352666 } }
+        { type = textmenuelement id = APGapRow091 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352667 } }
+        { type = textmenuelement id = APGapRow092 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352668 } }
+        { type = textmenuelement id = APGapRow093 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352669 } }
+        { type = textmenuelement id = APGapRow094 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352670 } }
+        { type = textmenuelement id = APGapRow095 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352671 } }
+        { type = textmenuelement id = APGapRow096 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352672 } }
+        { type = textmenuelement id = APGapRow097 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352673 } }
+        { type = textmenuelement id = APGapRow098 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352674 } }
+        { type = textmenuelement id = APGapRow099 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352675 } }
+        { type = textmenuelement id = APGapRow100 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352676 } }
+        { type = textmenuelement id = APGapRow101 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352677 } }
+        { type = textmenuelement id = APGapRow102 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352678 } }
+        { type = textmenuelement id = APGapRow103 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352679 } }
+        { type = textmenuelement id = APGapRow104 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352680 } }
+        { type = textmenuelement id = APGapRow105 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352681 } }
+        { type = textmenuelement id = APGapRow106 text = "Loading..." target = "AP_SelectGap" params = { flag = 2147352682 } }
+        { type = textmenuelement id = APGapBack text = "Back" link = game_menu }
+    ]
+}
+
+script AP_SelectGap {
+    SetGlobalFlag flag = <flag>
+}
+
+script AP_ToggleCollectibleMarkers {
+    SetGlobalFlag flag = 2147483645
+}

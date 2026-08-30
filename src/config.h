@@ -1,7 +1,7 @@
 #ifndef _CONFIG_H_
 #define _CONFIG_H_
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 
 #define CONFIG_FILE_NAME "partymod.ini"
 
@@ -94,8 +94,6 @@ void loadKeyBinds(struct keybinds *bindsOut, uint8_t *usingHardCodedControls);
 int getIniBool(char *section, char *key, int def, char *file);
 
 void patchLoadConfig();
-void dumpSettings();
 void patchWindow();
-void patchLoadConfig();
 
 #endif

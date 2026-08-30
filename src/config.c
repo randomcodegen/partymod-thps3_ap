@@ -9,8 +9,8 @@
 #include <input.h>
 #include <global.h>
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_syswm.h>
+#include <SDL.h>
+#include <SDL_syswm.h>
 
 int *resX = 0x00851084;
 int *resY = 0x00851088;
@@ -35,21 +35,6 @@ float *aspectRatio2 = 0x0058d96c;
 uint8_t borderless;
 
 SDL_Window *window;
-
-void dumpSettings() {
-	printf("RESOLUTION X: %d\n", *resX);
-	printf("RESOLUTION Y: %d\n", *resY);
-	printf("BIT DEPTH: %d\n", *bitDepth);
-	printf("HIGH BANDWIDTH: %02x\n", *highBandwidth);
-	printf("PLAY INTRO: %02x\n", *playIntro);
-	printf("CUSTOM SETTINGS: %02x\n", *customSettings);
-	printf("ANIMATING TEXTURES: %02x\n", *animatingTextures);
-	printf("SHADOWS: %02x\n", *shadows);
-	printf("PARTICLES: %02x\n", *particles);
-	printf("DISTANCE FOG: %02x\n", *distanceFog);
-	printf("LOW DETAIL MODELS: %02x\n", *lowDetailModels);
-	printf("LOCK TO 60HZ: %02x\n", *frameCap);
-}
 
 void enforceMaxResolution() {
 	DEVMODE deviceMode;

@@ -1,0 +1,10 @@
+{
+  "name": "thps3-partymod-ap",
+  "version-string": "1.1.6-ap.0",
+  "builtin-baseline": "d7112d1a4fb50410d3639f5f586972591d848beb",
+  "dependencies": [
+    "ixwebsocket",
+    "jsoncpp",
+    "sdl2"
+  ]
+}

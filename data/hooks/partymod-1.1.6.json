@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "build_id": "thps3-1.01-partymod-1.1.6",
+  "source_revision": "60664e11aec2ccc60a9abf255ca869dc9587cd47",
+  "entries": [
+    {
+      "key": "script_loader_patch",
+      "address": "0x0042b354",
+      "length": 20,
+      "kind": "code",
+      "owner": "partymod",
+      "expected_file_bytes": "e8 f7 2d 12 00 8b f0 68 b0 43 5b 00 55 ff 56 04 8b f8 57 e8",
+      "source": "src/script.c:patchScriptHook",
+      "purpose": "PartyMod replaces this block to load and BPS-patch QB scripts."
+    },
+    {
+      "key": "script_loader_continuation",
+      "address": "0x0042b3d0",
+      "length": 16,
+      "kind": "code",
+      "owner": "game",
+      "expected_file_bytes": "83 ec 14 8b 0d 64 93 85 00 53 55 56 57 e8 5e 97",
+      "source": "src/script.c:dumpScript",
+      "purpose": "Consumes a loaded script buffer after PartyMod applies a patch."
+    },
+    {
+      "key": "is_career_mode",
+      "address": "0x00421540",
+      "length": 16,
+      "kind": "code",
+      "owner": "game",
+      "expected_file_bytes": "6a ff 68 80 bb 57 00 64 a1 00 00 00 00 50 64 89",
+      "source": "src/main.c:retryHook",
+      "purpose": "Returns whether the active game is a career session."
+    },
+    {
+      "key": "get_global_flag",
+      "address": "0x00421110",
+      "length": 16,
+      "kind": "code",
+      "owner": "game",
+      "expected_file_bytes": "64 a1 00 00 00 00 6a ff 68 b0 ba 57 00 50 64 89",
+      "source": "src/main.c:apGetGlobalFlagHook",
+      "purpose": "Original QScript GetGlobalFlag CFunc; AP delegates unrelated flags here."
+    },
+    {
+      "key": "get_global_flag_callback_slot",
+      "address": "0x005b7f6c",
+      "length": 4,
+      "kind": "data",
+      "owner": "archipelago",
+      "expected_file_bytes": "10 11 42 00",
+      "source": "src/main.c:patchArchipelagoHooks",
+      "purpose": "AP overrides vanilla level-unlock flag queries used to gray or activate level-menu entries."
+    },
+    {
+      "key": "retry_level",
+      "address": "0x00422400",
+      "length": 16,
+      "kind": "code",
+      "owner": "game",
+      "expected_file_bytes": "6a ff 68 00 bf 57 00 64 a1 00 00 00 00 50 64 89",
+      "source": "src/main.c:retryHook",
+      "purpose": "Original level retry function called after PartyMod IL bookkeeping."
+    },
+    {
+      "key": "load_requested_level",
+      "address": "0x004220c0",
+      "length": 16,
+      "kind": "code",
+      "owner": "game",
+      "expected_file_bytes": "6a ff 68 40 be 57 00 64 a1 00 00 00 00 50 64 89",
+      "source": "src/main.c:loadRequestedLevelHook",
+      "purpose": "Original requested-level load function and AP level-gate candidate."
+    },
+    {
+      "key": "retry_callback_slot",
+      "address": "0x005b801c",
+      "length": 4,
+      "kind": "data",
+      "owner": "partymod_when_il_mode",
+      "expected_file_bytes": "00 24 42 00",
+      "source": "src/main.c:patchILMode",
+      "purpose": "PartyMod replaces this callback pointer when IL mode is active."
+    },
+    {
+      "key": "load_requested_level_callback_slot",
+      "address": "0x005b7ffc",
+      "length": 4,
+      "kind": "data",
+      "owner": "partymod_when_il_mode",
+      "expected_file_bytes": "c0 20 42 00",
+      "source": "src/main.c:patchILMode",
+      "purpose": "Candidate shared callback for AP level gating; must chain hook ownership."
+    },
+    {
+      "key": "trick_limit_branch",
+      "address": "0x004355ad",
+      "length": 8,
+      "kind": "code",
+      "owner": "partymod_when_no_trick_limit",
+      "expected_file_bytes": "7e 34 68 fa 00 00 00 68",
+      "source": "src/main.c:patchTrickLimit",
+      "purpose": "Not a trick-category gate; catalogued to avoid confusing it with AP restrictions."
+    },
+    {
+      "key": "accepted_scoring_gap",
+      "address": "0x004b1bb8",
+      "length": 6,
+      "kind": "code",
+      "owner": "archipelago",
+      "expected_file_bytes": "6a 00 6a 00 6a ff",
+      "source": "src/main.c:apInstallAcceptedGapHook",
+      "purpose": "Reports the displayed scoring-gap name after EndGap acceptance and cancellation checks."
+    },
+    {
+      "key": "career_root_pointer",
+      "address": "0x008e1e90",
+      "length": 4,
+      "kind": "data",
+      "owner": "game",
+      "expected_file_bytes": null,
+      "source": "src/main.c:retryHook",
+      "purpose": "Root of PartyMod's career-state pointer chain."
+    }
+  ],
+  "career_layout": {
+    "root_pointer": "0x008e1e90",
+    "pointer_chain_offsets": [
+      "0x134",
+      "0x14"
+    ],
+    "current_level_offset": "0x690",
+    "goals_base_offset": "0x564",
+    "level_record_stride": 8,
+    "flags_base_offset": "0x5e4",
+    "pickups_offset_from_flags": 4,
+    "stats_and_boards_mask": "0x01f80000",
+    "stat_points_mask": "0x00f80000",
+    "deck_mask": "0x01000000",
+    "stat_point_flags": {
+      "1": 55,
+      "2": 54,
+      "3": 53,
+      "4": 52,
+      "5": 51
+    },
+    "stat_point_pickup_bits": {
+      "1": "0x00800000",
+      "2": "0x00400000",
+      "3": "0x00200000",
+      "4": "0x00100000",
+      "5": "0x00080000"
+    },
+    "stat_point_mapping_source": "Stock Data/Scripts/goal_scripts.qb constants GOAL_STAT_POINT1..5; GOAL_DECK is flag 56",
+    "competition_level_numbers": [
+      3,
+      6,
+      8
+    ]
+  },
+  "level_unlock_flags": {
+    "LEVEL_UNLOCKED_FOUNDRY": "0xe409e331",
+    "LEVEL_UNLOCKED_CANADA": "0xe02bc35a",
+    "LEVEL_UNLOCKED_RIO": "0x293cf920",
+    "LEVEL_UNLOCKED_SUBURBIA": "0xb60f890a",
+    "LEVEL_UNLOCKED_AIRPORT": "0x87f55142",
+    "LEVEL_UNLOCKED_SKATERISLAND": "0xa6cbe04a",
+    "LEVEL_UNLOCKED_LOSANGELES": "0x8d3c20fc",
+    "LEVEL_UNLOCKED_TOKYO": "0xdf37fbf0",
+    "LEVEL_UNLOCKED_SHIP": "0x8466c7d9",
+    "SPECIAL_HAS_SEEN_SHIP": "0x9a353791"
+  }
+}
