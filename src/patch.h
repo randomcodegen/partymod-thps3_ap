@@ -19,7 +19,7 @@ void patchCall(void *addr, void *func);
 void patchThisToCdecl(void *addr, void *func);
 void callFunc(void *addr);
 uint32_t crc32(const void *buf, size_t size);
-int applyPatch(uint8_t *patch, size_t patchLen, uint8_t *input, size_t inputLen,
+int applyPatch(const uint8_t *patch, size_t patchLen, const uint8_t *input, size_t inputLen,
 	uint8_t **output, size_t *outputLen);
 
 #endif

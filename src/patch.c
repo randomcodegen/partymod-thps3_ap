@@ -136,13 +136,13 @@ uint32_t crc32(const void *buf, size_t size) {
 	return crc ^ 0xffffffff;
 }
 
-uint8_t readByte(uint8_t *buf, size_t *offset) {
+uint8_t readByte(const uint8_t *buf, size_t *offset) {
 	uint8_t result = buf[*offset];
 	(*offset)++;
 	return result;
 }
 
-uint64_t decodeNumber(uint8_t *buf, size_t *offset) {
+uint64_t decodeNumber(const uint8_t *buf, size_t *offset) {
 	uint64_t result = 0;
 	uint64_t bitOffset = 0;
 
@@ -159,7 +159,31 @@ uint64_t decodeNumber(uint8_t *buf, size_t *offset) {
 	return result;
 }
 
-int applyPatch(uint8_t *patch, size_t patchLen, uint8_t *input, size_t inputLen, uint8_t **output, size_t *outputLen) {
+int applyPatch(const uint8_t *patch, size_t patchLen, const uint8_t *input, size_t inputLen, uint8_t **output, size_t *outputLen) {
+	*output = NULL;
+	*outputLen = 0;
+	if (patchLen < 16) {
+		printf("BPS patch is truncated!\n");
+		return 1;
+	}
+
+	uint32_t sourceCrc;
+	uint32_t targetCrc;
+	uint32_t patchCrc;
+	memcpy(&sourceCrc, patch + patchLen - 12, sizeof(sourceCrc));
+	memcpy(&targetCrc, patch + patchLen - 8, sizeof(targetCrc));
+	memcpy(&patchCrc, patch + patchLen - 4, sizeof(patchCrc));
+	if (crc32(patch, patchLen - 4) != patchCrc) {
+		printf("BPS patch checksum mismatch!\n");
+		return 1;
+	}
+	uint32_t inputCrc = crc32(input, inputLen);
+	if (inputCrc != sourceCrc) {
+		printf("BPS source checksum mismatch! expected: %08x actual: %08x\n",
+			sourceCrc, inputCrc);
+		return 1;
+	}
+
 	size_t patchOffset = 0;
 	size_t outputOffset = 0;
 
@@ -185,6 +209,11 @@ int applyPatch(uint8_t *patch, size_t patchLen, uint8_t *input, size_t inputLen,
 
 	*outputLen = decodeNumber(patch, &patchOffset);
 	*output = malloc(*outputLen);
+	if (!*output) {
+		printf("Failed to allocate patch output!\n");
+		*outputLen = 0;
+		return 1;
+	}
 
 	uint32_t metadataLen = decodeNumber(patch, &patchOffset);
 	patchOffset += metadataLen;	// skip metadata
@@ -226,6 +255,13 @@ int applyPatch(uint8_t *patch, size_t patchLen, uint8_t *input, size_t inputLen,
 				break;
 			}
 		}
+	}
+	if (outputOffset != *outputLen || crc32(*output, *outputLen) != targetCrc) {
+		printf("BPS target checksum mismatch!\n");
+		free(*output);
+		*output = NULL;
+		*outputLen = 0;
+		return 1;
 	}
 
 	return 0;

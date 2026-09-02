@@ -1064,7 +1064,7 @@ void Run(const std::string& slot_name) {
         }
         Json::Value hello;
         hello["client"] = "thps3-apclient-native";
-        hello["client_version"] = "1.0.0";
+        hello["client_version"] = "1.0.2";
         hello["game"] = kGame;
         if (!pipe.Write(Frame("hello", sequence++, std::move(hello)))) { pipe.Close(); continue; }
 

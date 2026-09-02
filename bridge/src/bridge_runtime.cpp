@@ -89,7 +89,7 @@ constexpr std::string_view TriggerTypeName(std::uint32_t type) {
 }
 
 constexpr std::string_view kHelloAck =
-    R"({"payload":{"bridge_version":"1.0.0","game_hooks_ready":true},"protocol_version":1,"sequence":0,"type":"hello_ack"})"
+    R"({"payload":{"bridge_version":"1.0.2","game_hooks_ready":true},"protocol_version":1,"sequence":0,"type":"hello_ack"})"
     "\n";
 constexpr std::string_view kStateAck =
     R"({"payload":{},"protocol_version":1,"sequence":1,"type":"state_ack"})"

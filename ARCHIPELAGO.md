@@ -20,9 +20,16 @@ Dependency and license details are in `docs/THIRD_PARTY.md`.
 
 ## Install
 
-The supported game is English THPS3 1.01 patched with PartyMod 1.1.6. 
-Close the game, back up its original `partymod.dll`, then copy the Release DLL
-and `partymod.ini` beside `THPS3.exe`. See `docs/SUPPORTED_BUILDS.md` for hashes.
+Install `thps3.apworld` in Archipelago, then install the US English THPS3 1.01
+update on top of your THPS3 installation if you haven't done so yet. 
+Extract every file from `partymod-thps3_ap-*.zip` directly into the
+THPS3 installation directory beside the unmodified `Skate3.exe`.
+Run `partypatcher.exe` once to validate `Skate3.exe` and create `THPS3.exe`. 
+Modified, cracked, or unsupported executables are rejected.
+
+Edit the `[Archipelago]` connection settings in `partymod.ini`, optionally use
+`partyconfig.exe` for graphics and controls, then launch `THPS3.exe`. See
+`docs/SUPPORTED_BUILDS.md` for hashes.
 
 The release DLL is unsigned. Windows may show a download or reputation
 warning.
@@ -40,4 +47,3 @@ Password=
 
 PartyMod is MIT-licensed. APCpp is LGPL-2.1. The bundled Onani HUD glyphs
 are permitted for non-commercial projects.
-

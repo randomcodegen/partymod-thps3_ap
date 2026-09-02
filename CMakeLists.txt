@@ -82,6 +82,13 @@ if(MSVC)
 endif()
 
 if(BUILD_TESTING)
+	add_executable(partypatcher_validation_test
+		"${CMAKE_CURRENT_SOURCE_DIR}/tests/partypatcher_validation_test.c"
+		"${SRC}/patch.c"
+	)
+	target_include_directories(partypatcher_validation_test PRIVATE "${SRC}")
+	add_test(NAME partypatcher_validation COMMAND partypatcher_validation_test)
+
 	add_executable(thps3_ap_bridge_runtime_test
 		"${THPS3_AP_ROOT}/bridge/tests/bridge_runtime_live_event_test.cpp"
 		"${THPS3_AP_ROOT}/bridge/src/bridge_runtime.cpp"
@@ -179,3 +186,9 @@ target_include_directories(partypatcher PUBLIC
 	${THIRDPARTY}
 	"${THIRDPARTY}/incbin"
 )
+
+install(TARGETS partymod partypatcher partyconfig
+	RUNTIME DESTINATION .
+	LIBRARY DESTINATION .
+)
+install(FILES partymod.ini gamecontrollerdb.txt DESTINATION .)

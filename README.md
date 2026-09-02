@@ -25,12 +25,15 @@ PARTYMOD is a series of patches that provide various fixes and modernizations fo
 * Optionally removes the trick cap for combo multipliers
 
 ## Installation
-1. Download PARTYMOD from the releases tab
-2. Make sure THPS3 (English) is installed and the 1.01 patch is applied, remove the widescreen mod if it is installed (delete dinput8.dll)
-3. Extract this zip folder into your THPS3 installation directory
-4. Run partypatcher.exe to create the new, patched THPS3.exe game executable (this will be used to launch the game from now on) (this only needs to be done once)
-5. Optionally (highly recommended), configure the game with partyconfig.exe
-6. Launch the game from THPS3.exe
+1. Install THPS3 and the 1.01 patch. 
+The game directory must contain the unmodified `Skate3.exe`; cracked executables are not supported. Remove the widescreen mod if installed by deleting `dinput8.dll`.
+1. Extract **every file** from `partymod-thps3_ap-*.zip` directly into the THPS3 installation directory, beside `Skate3.exe`.
+2. From that directory, run `partypatcher.exe` once. 
+It validates `Skate3.exe` and creates the supported `THPS3.exe`. 
+If validation fails, restore the original US English 1.01 executable.
+3. Edit the `[Archipelago]` connection settings in `partymod.ini`. 
+Optionally run `partyconfig.exe` to configure graphics and controls.
+4. Launch the game with the newly created `THPS3.exe`, not `Skate3.exe`.
 
 NOTE: if the game is installed into the "Program Files" directory, you may need to run each program as administrator. 
 Also, if the game is installed into the "Program Files" directory, save files will be saved in the C:\Users\<name>\AppData\Local\VirtualStore directory.  

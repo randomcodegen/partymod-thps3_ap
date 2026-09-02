@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thps3-apclient"
-version = "1.0.0"
+version = "1.0.2"
 description = "Native Archipelago client and game bridge tooling for Tony Hawk's Pro Skater 3"
 requires-python = ">=3.11"
 
