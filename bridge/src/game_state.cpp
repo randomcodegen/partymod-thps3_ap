@@ -413,6 +413,23 @@ std::uint32_t ReceivedStatPointItemCount() {
     return g_received_stat_point_item_count.load(std::memory_order_acquire);
 }
 
+std::uint32_t AvailableStatPoints(
+    const std::array<std::uint32_t, 10>& assignment,
+    std::uint32_t received_points,
+    std::uint32_t skater_checksum) {
+    // skater_profile.qb gives every skater 45 total points except Demoness (90).
+    // Eyeball's 45 includes 36 initially unspent points.
+    const std::uint32_t budget = (skater_checksum == 0xe00192c5u ? 90u : 45u)
+        + (std::min)(received_points, 45u);
+    std::uint64_t assigned = 0;
+    for (std::size_t index = 1; index < assignment.size(); ++index) {
+        assigned += assignment[index];
+    }
+    return assigned < budget
+        ? static_cast<std::uint32_t>((std::min)(budget - assigned, std::uint64_t{45}))
+        : 0u;
+}
+
 bool StatPointsAreLocations() {
     return g_stat_points_are_locations.load(std::memory_order_acquire);
 }

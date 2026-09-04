@@ -91,7 +91,6 @@ static_assert(NeighborGapMenuRow(0, 0) == kGapMenuRowCount);
 std::atomic_uint32_t g_highlighted_cassette_level = 0;
 std::array<std::atomic_uint32_t, 9> g_pending_goal_masks{};
 std::array<std::atomic_bool, 9> g_pending_decks{};
-std::atomic_uint32_t g_applied_stat_point_item_count = 0;
 void* g_stat_assignment_profile = nullptr;
 std::array<std::uint32_t, 10> g_last_stat_assignment{};
 void* g_appearance_profile = nullptr;
@@ -437,7 +436,6 @@ void SyncStatAssignment(void* profile, std::uint32_t received_points) {
         g_last_stat_assignment.fill(0xffffffffu);
         std::array<std::uint32_t, 10> saved{};
         if (thps3_ap::GetStatAssignment(saved)) {
-            saved[0] = std::min(saved[0], received_points);
             for (std::size_t index = 0; index < saved.size(); ++index) {
                 *fields[index] = saved[index];
             }
@@ -448,6 +446,10 @@ void SyncStatAssignment(void* profile, std::uint32_t received_points) {
     for (std::size_t index = 0; index < assignment.size(); ++index) {
         assignment[index] = *fields[index];
     }
+    // Restore stats first, then recover the balance from the full item history.
+    assignment[0] = thps3_ap::AvailableStatPoints(
+        assignment, received_points, thps3_ap::SelectedSkaterNativeChecksum());
+    *fields[0] = assignment[0];
     if (assignment == g_last_stat_assignment) {
         return;
     }
@@ -1892,17 +1894,7 @@ extern "C" void THPS3AP_PumpMainThread() {
     RefreshUnlockedScoreGoals(
         profile_manager, static_cast<int>(current_level));
     if (thps3_ap::StatPointsAreLocations()) {
-        const std::uint32_t desired = thps3_ap::ReceivedStatPointItemCount();
-        const std::uint32_t applied =
-            g_applied_stat_point_item_count.load(std::memory_order_acquire);
-        if (desired > applied) {
-            const std::uint32_t delta = desired - applied;
-            using AddStatPoints = void (__thiscall *)(void*, int);
-            const auto add_stat_points = reinterpret_cast<AddStatPoints>(0x004BCBB0);
-            add_stat_points(profile, static_cast<int>(delta));
-            g_applied_stat_point_item_count.store(desired, std::memory_order_release);
-        }
-        SyncStatAssignment(profile, desired);
+        SyncStatAssignment(profile, thps3_ap::ReceivedStatPointItemCount());
     }
     SyncAppearance(profile);
 

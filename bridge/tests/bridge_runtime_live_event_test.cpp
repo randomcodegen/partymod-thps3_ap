@@ -226,6 +226,27 @@ int main() {
     }
 
     if (passed) {
+        // Test-Case 1545223606995394640: 36 received, 18 spent, but storage retained a zero balance.
+        std::array<std::uint32_t, 10> assignment{0, 9, 9, 8, 9, 8, 5, 5, 5, 5};
+        passed = thps3_ap::AvailableStatPoints(assignment, 36, 0x9b65d7b8u) == 18;
+        assignment[0] = 18;
+        passed = passed &&
+            thps3_ap::AvailableStatPoints(assignment, 36, 0x9b65d7b8u) == 18 &&
+            thps3_ap::AvailableStatPoints(assignment, 37, 0x9b65d7b8u) == 19 &&
+            thps3_ap::AvailableStatPoints(assignment, 0, 0x9b65d7b8u) == 0;
+        ++assignment[1];
+        passed = passed &&
+            thps3_ap::AvailableStatPoints(assignment, 36, 0x9b65d7b8u) == 17;
+        assignment.fill(10);
+        passed = passed &&
+            thps3_ap::AvailableStatPoints(assignment, 0, 0xe00192c5u) == 0;
+        assignment.fill(1);
+        passed = passed &&
+            thps3_ap::AvailableStatPoints(assignment, 0, 0x939470b0u) == 36 &&
+            thps3_ap::AvailableStatPoints(assignment, 45, 0x939470b0u) == 45;
+    }
+
+    if (passed) {
         thps3_ap::ApplyStateSnapshot(R"({"stat_point_items":999})");
         passed = thps3_ap::ReceivedStatPointItemCount() == 45;
     }

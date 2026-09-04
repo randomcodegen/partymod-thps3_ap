@@ -24,6 +24,10 @@ std::uint32_t TimeBonusSeconds();
 std::uint32_t TakePendingScoreBonusItems(bool active_combo);
 std::uint32_t ReceivedScoreBonusItemCount();
 bool GetStatAssignment(std::array<std::uint32_t, 10>& assignment);
+std::uint32_t AvailableStatPoints(
+    const std::array<std::uint32_t, 10>& assignment,
+    std::uint32_t received_points,
+    std::uint32_t skater_checksum);
 bool StatAssignmentStorageLoaded();
 bool AppearanceStorageLoaded();
 bool GetAppearance(std::string& appearance);
