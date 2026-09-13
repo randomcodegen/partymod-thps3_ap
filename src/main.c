@@ -1897,6 +1897,41 @@ void apInstallLipEngageHook(void) {
 	patchDWord(site + 1, (uint32_t)apLipEngageHook - (uint32_t)site - 5);
 }
 
+static int __cdecl apGrindTricksAllowed(void) {
+	return THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_GRIND);
+}
+
+// Rail detection shares its button with lip tricks. Block before rail physics
+// touches the skater so unlocked lips still receive the input cleanly.
+__declspec(naked) void apGrindEngageHook(void) {
+	__asm {
+		pushfd
+		pushad
+		call apGrindTricksAllowed
+		test eax, eax
+		jnz allowGrind
+		popad
+		popfd
+		push 0x004a6e5b
+		ret
+	allowGrind:
+		popad
+		popfd
+		mov ecx, dword ptr [esi + 0x8838]
+		xor edx, edx
+		mov dl, byte ptr [ecx + 0x40]
+		push 0x004a6569
+		ret
+	}
+}
+
+void apInstallGrindEngageHook(void) {
+	uint8_t *site = (uint8_t *)0x004a655e;
+	patchNop(site, 11);
+	patchByte(site, 0xe9);
+	patchDWord(site + 1, (uint32_t)apGrindEngageHook - (uint32_t)site - 5);
+}
+
 static void *__fastcall apScriptConstructorHook(
 	void *object,
 	void *unusedEdx,
@@ -2051,6 +2086,7 @@ void patchArchipelagoHooks() {
 	apEnsureObjectiveUnlockedCommand();
 	apEnsureCustomSkaterAllowedCommand();
 	apInstallLipEngageHook();
+	apInstallGrindEngageHook();
 	apInstallGapTouchTraceHooks();
 	apInstallAcceptedGapHook();
 	patchCall(0x004af027, apScoreLandedHook);

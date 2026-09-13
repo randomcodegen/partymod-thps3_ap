@@ -723,7 +723,8 @@ void __cdecl processController(device *dev) {
 	// Menus reuse the face buttons. Filter only the composed gameplay input so
 	// keyboard and controller follow the same AP permissions.
 	if (THPS3AP_HasStateSnapshot() && !menuOnScreen()) {
-		if (!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_GRIND)) {
+		if (!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_GRIND) &&
+			!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_LIP)) {
 			dev->controlData[3] &= ~(0x01 << 4);
 			dev->controlData[12] = 0;
 		}

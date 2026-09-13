@@ -582,12 +582,20 @@ void ApplySpecialTrickPermission() {
             skater + list_offsets[queue]);
         SavedSpecialQueue& saved = g_saved_special_queues[queue];
 
-        if (!unlocked) {
-            if (*special != 0 && *count <= saved.regular.size()) {
+        // Use the saved manual tricks to restore specials when Manuals unlock.
+        const bool saved_manual = queue == 1 && *count == 0 &&
+            g_saved_manual_trick_skater == skater_address &&
+            g_saved_manual_trick_count > 0;
+        const auto regular_count = saved_manual ? g_saved_manual_trick_count : *count;
+        const auto* regular_tricks = saved_manual ? g_saved_manual_tricks.data() : regular;
+        const bool queue_unlocked = unlocked && (queue != 1 ||
+            THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_MANUAL));
+        if (!queue_unlocked) {
+            if (*special != 0 && regular_count <= saved.regular.size()) {
                 saved.special = *special;
-                saved.regular_count = *count;
-                for (std::uint32_t i = 0; i < *count; ++i) {
-                    saved.regular[i] = regular[i];
+                saved.regular_count = regular_count;
+                for (std::uint32_t i = 0; i < regular_count; ++i) {
+                    saved.regular[i] = regular_tricks[i];
                 }
             }
             if (*special != 0) {
@@ -596,10 +604,10 @@ void ApplySpecialTrickPermission() {
             continue;
         }
 
-        bool same_regular_queue = *count == saved.regular_count;
+        bool same_regular_queue = regular_count == saved.regular_count;
         for (std::uint32_t i = 0;
              same_regular_queue && i < saved.regular_count; ++i) {
-            same_regular_queue = regular[i] == saved.regular[i];
+            same_regular_queue = regular_tricks[i] == saved.regular[i];
         }
         if (*special == 0 && saved.special != 0 && same_regular_queue) {
             *special = saved.special;
@@ -1913,15 +1921,6 @@ extern "C" void THPS3AP_PumpMainThread() {
 
     void* const flag_bank =
         static_cast<std::uint8_t*>(profile) + 0x558;
-    if (current_level == 3 || current_level == 6 || current_level == 8) {
-        for (int medal_id = 2; medal_id >= 0; --medal_id) {
-            if (get_career_flag(flag_bank, 50u + medal_id)) {
-                THPS3AP_RecordMedalResult(
-                    static_cast<int>(current_level), medal_id);
-                break;
-            }
-        }
-    }
     for (const auto& entry : kLevelMenuEntries) {
         const bool unlocked =
             THPS3AP_IsLevelUnlocked(entry.level_number) != FALSE;
