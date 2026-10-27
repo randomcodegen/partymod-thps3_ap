@@ -52,6 +52,8 @@ find_package(jsoncpp CONFIG REQUIRED)
 target_sources(partymod PRIVATE
 	"${THPS3_AP_ROOT}/bridge/src/partymod_version.rc"
 	"${THPS3_AP_ROOT}/bridge/src/bridge_c_api.cpp"
+	"${THPS3_AP_ROOT}/bridge/src/console.cpp"
+	"${THPS3_AP_ROOT}/bridge/src/deathlink.cpp"
 	"${THPS3_AP_ROOT}/bridge/src/bridge_runtime.cpp"
 	"${THPS3_AP_ROOT}/bridge/src/game_state.cpp"
 	"${THPS3_AP_ROOT}/native_client/main.cpp"
@@ -60,7 +62,7 @@ target_sources(partymod PRIVATE
 
 target_link_libraries(partymod PUBLIC ${LIBS})
 target_link_libraries(partymod PRIVATE
-	advapi32 bcrypt crypt32 ws2_32
+	advapi32 bcrypt crypt32 ws2_32 gdi32
 	ixwebsocket::ixwebsocket
 	JsonCpp::JsonCpp
 )
@@ -82,6 +84,36 @@ if(MSVC)
 endif()
 
 if(BUILD_TESTING)
+	add_executable(thps3_ap_deathlink_test
+		"${THPS3_AP_ROOT}/tests/deathlink_test.cpp"
+		"${THPS3_AP_ROOT}/bridge/src/deathlink.cpp"
+		"${THPS3_AP_ROOT}/bridge/src/game_state.cpp"
+		"${THPS3_APCPP_ROOT}/Archipelago.cpp"
+	)
+	target_include_directories(thps3_ap_deathlink_test PRIVATE
+		"${THPS3_AP_ROOT}/bridge/include" "${THPS3_APCPP_ROOT}"
+	)
+	target_compile_features(thps3_ap_deathlink_test PRIVATE cxx_std_20)
+	target_compile_definitions(thps3_ap_deathlink_test PRIVATE NOMINMAX)
+	target_link_libraries(thps3_ap_deathlink_test PRIVATE
+		advapi32 bcrypt crypt32 ws2_32 ixwebsocket::ixwebsocket JsonCpp::JsonCpp
+	)
+	if(MSVC)
+		target_compile_options(thps3_ap_deathlink_test PRIVATE /UNDEBUG)
+	endif()
+	add_test(NAME deathlink COMMAND thps3_ap_deathlink_test)
+	add_executable(thps3_ap_console_test
+		"${THPS3_AP_ROOT}/tests/console_test.cpp"
+		"${THPS3_AP_ROOT}/bridge/src/console.cpp"
+	)
+	target_include_directories(thps3_ap_console_test PRIVATE "${THPS3_AP_ROOT}/bridge/include")
+	target_compile_features(thps3_ap_console_test PRIVATE cxx_std_20)
+	target_compile_definitions(thps3_ap_console_test PRIVATE NOMINMAX SDL_MAIN_HANDLED)
+	target_link_libraries(thps3_ap_console_test PRIVATE SDL2::SDL2 gdi32)
+	if(MSVC)
+		target_compile_options(thps3_ap_console_test PRIVATE /UNDEBUG)
+	endif()
+	add_test(NAME ingame_console COMMAND thps3_ap_console_test)
 	add_executable(partypatcher_validation_test
 		"${CMAKE_CURRENT_SOURCE_DIR}/tests/partypatcher_validation_test.c"
 		"${SRC}/patch.c"

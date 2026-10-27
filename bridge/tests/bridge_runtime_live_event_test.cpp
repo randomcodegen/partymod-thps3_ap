@@ -1,6 +1,7 @@
 #include "thps3_ap/bridge_c_api.h"
 #include "thps3_ap/bridge_runtime.hpp"
 #include "thps3_ap/game_state.hpp"
+#include "thps3_ap/console.hpp"
 
 #include <windows.h>
 
@@ -122,6 +123,7 @@ HANDLE ConnectClient() {
 }  // namespace
 
 int main() {
+    thps3_ap::ConsoleMainMenuReady();
     if (!thps3_ap::StartupConnectionTimedOut(true, 20'000) ||
         thps3_ap::StartupConnectionTimedOut(false, 20'000)) {
         std::cerr << "startup timeout check failed\n";
@@ -208,6 +210,7 @@ int main() {
                  thps3_ap::IsTrickCategoryUnlocked(2) &&
                  thps3_ap::IsTrickCategoryUnlocked(3) &&
                  thps3_ap::IsTrickCategoryUnlocked(4) &&
+                 !thps3_ap::IsTrickCategoryUnlocked(THPS3AP_TRICK_WALLRIDE) &&
                  thps3_ap::OwnedObjectiveCareerBits(1) == 0x1ffu &&
                  thps3_ap::OwnedObjectiveCareerBits(3) == 0x7u &&
                  thps3_ap::ReplaceObjectiveCareerBits(
@@ -223,6 +226,23 @@ int main() {
                      0x80000401u, 2u) == 0x80000403u &&
                  thps3_ap::ReplaceDeckInventoryBits(
                      0x800007ffu, 0u) == 0x80000401u;
+    }
+
+    if (passed) {
+        // a new snapshot replaces permissions, so either item can unlock first
+        thps3_ap::ApplyStateSnapshot(
+            R"({"trick_permissions":{"wallride":true}})");
+        passed = thps3_ap::TrickPermissionMask() == 128 &&
+                 thps3_ap::IsTrickCategoryUnlocked(THPS3AP_TRICK_WALLRIDE) &&
+                 !thps3_ap::IsTrickCategoryUnlocked(THPS3AP_TRICK_GRIND) &&
+                 !thps3_ap::IsTrickCategoryUnlocked(THPS3AP_TRICK_LIP) &&
+                 !thps3_ap::IsTrickCategoryUnlocked(8);
+        thps3_ap::ApplyStateSnapshot(
+            R"({"trick_permissions":{"grind":true,"lip":true}})");
+        passed = passed &&
+                 !thps3_ap::IsTrickCategoryUnlocked(THPS3AP_TRICK_WALLRIDE) &&
+                 thps3_ap::IsTrickCategoryUnlocked(THPS3AP_TRICK_GRIND) &&
+                 thps3_ap::IsTrickCategoryUnlocked(THPS3AP_TRICK_LIP);
     }
 
     if (passed) {

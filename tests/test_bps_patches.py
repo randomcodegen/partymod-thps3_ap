@@ -119,7 +119,7 @@ def test_casmenu_blocks_unselected_custom_skater_transition() -> None:
     target = guard_custom_skater_entry(source)
 
     assert (
-        b"\x25\x0e" + checksum_token("APCustomSkaterAllowed") + b"\x0f\x01"
+        b"\x25" + checksum_token("APCustomSkaterAllowed") + b"\x01"
     ) in target
     assert checksum_token("SwitchToMenu") in target
     assert checksum_token("pre_cas_main_menu") in target
@@ -139,6 +139,33 @@ def test_memcard_blocks_every_custom_skater_load_entry() -> None:
         )
     target = guard_custom_skater_loads(source + b"\x00")
 
-    guard = b"\x25\x0e" + checksum_token("APCustomSkaterAllowed") + b"\x0f\x01"
+    guard = b"\x25" + checksum_token("APCustomSkaterAllowed") + b"\x01"
     assert target.count(guard) == len(LOAD_WRAPPERS)
     assert target.count(b"\x28\x01") == len(LOAD_WRAPPERS)
+
+
+def test_create_new_restores_ap_preset_before_reloading_the_model() -> None:
+    from make_casmenu_patch import restore_custom_skater_creation
+    from make_mainmenu_patch import checksum_token
+
+    reset = (
+        checksum_token("ResetSkaterProfile") + checksum_token("default_custom_skater_info")
+        + b"\x01" + checksum_token("ResetDefaultAppearance") + b"\x01"
+    )
+    refresh = (
+        checksum_token("reload_cas") + b"\x01" + checksum_token("FireMenuEvent")
+        + checksum_token("type") + b"\x07" + checksum_token("REFRESHDECKTEXTURES")
+        + checksum_token("id") + b"\x07" + checksum_token("deck_menu")
+        + checksum_token("target") + b"\x07" + checksum_token("deck_menu") + b"\x01"
+    )
+    declaration = b"\x23" + checksum_token("create_new_skater")
+    for newline in (b"\x01", b"\x02\x01\x00\x00\x00"):
+        # the shipped QB uses line-number tokens, compact QB uses one-byte ones.
+        commands = (reset + refresh).split(b"\x01")[:-1]
+        header = declaration + newline
+        source = header + newline.join(commands) + newline + b"\x24\x00"
+        target = restore_custom_skater_creation(source)
+        assert header + b"\x25" + checksum_token("APRestoreCustomSkaterPreset") in target
+        assert checksum_token("ResetSkaterProfile") not in target
+        assert checksum_token("ResetDefaultAppearance") not in target
+        assert refresh + b"\x28\x01\x24" in target

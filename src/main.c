@@ -519,10 +519,11 @@ long __stdcall presentWrapper(
 	const RGNDATA *dirtyRegion) {
 	long (__stdcall *present)(void *, const RECT *, const RECT *, HWND, const RGNDATA *) =
 		(void *)origPresent;
-	if (InterlockedCompareExchange(&apStagePassesThisFrame, 0, 0) > 0) {
+	if (THPS3AP_ConsoleHudVisible() && InterlockedCompareExchange(&apStagePassesThisFrame, 0, 0) > 0) {
 		THPS3AP_DrawCapturedStageOverlays(device);
 	}
-	THPS3AP_DrawHudOverlay(device);
+	if (THPS3AP_ConsoleHudVisible()) THPS3AP_DrawHudOverlay(device);
+	THPS3AP_DrawConsole(device);
 	RECT movieSource;
 	if (moviePresentSourceRect(&movieSource)) {
 		source = &movieSource;
@@ -732,7 +733,7 @@ int __cdecl apGetGlobalFlagHook(void *params, void *script) {
 		if (getChecksumParam(params, NULL, "flag", &flag, 1)) {
 			if (flag == 1 && apCurrentScriptChecksum(script) == 0xff46456eu &&
 				((int (__cdecl *)(void))0x00421540)()) {
-				// AP owns career persistence; skip GameFlow_End's automatic
+				// AP owns career persistence, skip GameFlow_End's automatic
 				// save confirmation without changing unrelated global flags.
 				return 0;
 			}
@@ -751,7 +752,7 @@ int __cdecl apGetGlobalFlagHook(void *params, void *script) {
 			// The vanilla career menu hides Cruise Ship entirely until this
 			// separate discovery flag is set. AP's ship item owns both states.
 			if (flag == 159) { // SPECIAL_HAS_SEEN_SHIP
-				// Keep the Ship cassette present; LEVEL_UNLOCKED_SHIP is
+				// Keep the Ship cassette present, LEVEL_UNLOCKED_SHIP is
 				// the independent AP-controlled access .decision.
 				int result = 1;
 				return result;
@@ -894,7 +895,7 @@ int __cdecl apUpdateRecordsHook(void *params, void *script) {
 		&apUpdateRecordsOriginal, 0, 0);
 	if (THPS3AP_HasStateSnapshot() &&
 		((int (__cdecl *)(void))0x00421540)()) {
-		// Avoid the career high-score initials flow; records are not AP state.
+		// Avoid the career high-score initials flow, records are not AP state.
 		return 1;
 	}
 	return original != NULL ? original(params, script) : 0;
@@ -1186,24 +1187,37 @@ int __cdecl apCustomSkaterAllowedCommand(void *params, void *script) {
 	return allowed;
 }
 
+int __cdecl apRestoreCustomSkaterPresetCommand(void *params, void *script) {
+	(void)params;
+	(void)script;
+	return THPS3AP_RestoreCustomSkaterPreset();
+}
+
 void apEnsureCustomSkaterAllowedCommand(void) {
 	typedef uint8_t *(__cdecl *ResolveQbKeyFn)(uint32_t checksum);
 	typedef uint8_t *(__cdecl *AddQbKeyHeaderFn)(uint32_t checksum, int headerId);
 	ResolveQbKeyFn resolveQbKey = (ResolveQbKeyFn)0x00426340;
 	AddQbKeyHeaderFn addQbKeyHeader = (AddQbKeyHeaderFn)0x0042b900;
-	uint8_t *header = (uint8_t *)resolveQbKey(0xdf7627ebu); // APCustomSkaterAllowed
-
-	if (header == NULL) {
-		header = addQbKeyHeader(0xdf7627ebu, 1);
-	}
-	if (header != NULL &&
-		(*(uint32_t *)(header + 4) != 8 ||
-		 *(uint32_t *)(header + 12) != (uint32_t)apCustomSkaterAllowedCommand)) {
-		apLogDynamicHookChange(
-			"APCustomSkaterAllowed", header,
-			*(uint32_t *)(header + 12), apCustomSkaterAllowedCommand);
-		*(uint32_t *)(header + 4) = 8; // COMPILED_FUNCTION
-		*(uint32_t *)(header + 12) = (uint32_t)apCustomSkaterAllowedCommand;
+	static const struct {
+		const char *name;
+		uint32_t key;
+		int (__cdecl *command)(void *, void *);
+	} commands[] = {
+		{"APCustomSkaterAllowed", 0xdf7627ebu, apCustomSkaterAllowedCommand},
+		{"APRestoreCustomSkaterPreset", 0x862968e5u, apRestoreCustomSkaterPresetCommand},
+	};
+	for (unsigned i = 0; i < sizeof(commands) / sizeof(commands[0]); ++i) {
+		uint32_t key = commands[i].key;
+		uint8_t *header = (uint8_t *)resolveQbKey(key);
+		if (header == NULL) header = addQbKeyHeader(key, 1);
+		if (header != NULL &&
+			(*(uint32_t *)(header + 4) != 8 ||
+			 *(uint32_t *)(header + 12) != (uint32_t)commands[i].command)) {
+			apLogDynamicHookChange(commands[i].name, header,
+				*(uint32_t *)(header + 12), commands[i].command);
+			*(uint32_t *)(header + 4) = 8; // COMPILED_FUNCTION
+			*(uint32_t *)(header + 12) = (uint32_t)commands[i].command;
+		}
 	}
 }
 
@@ -1216,7 +1230,7 @@ int __cdecl apGetFlagHook(void *params, void *script) {
 
 	// Foundry's normal level setup uses this transient flag to choose the open
 	// generator-door state. Mirror the checked valve objective into only that
-	// exact query; do not replay the valve completion or reward scripts.
+	// exact query, do not replay the valve completion or reward scripts.
 	if (THPS3AP_HasStateSnapshot() && apCurrentCareerLevel() == 1 &&
 		apCurrentScriptChecksum(script) == 0xa8475bebu &&
 		getChecksumParam(params, NULL, "flag", &flag, 1) && flag == 15 &&
@@ -1346,7 +1360,7 @@ int __cdecl apSetGoalHook(void *params, void *script) {
 	int blocked = 0;
 
 	// Do not read SetGoal's QScript parameters here. The original callback must
-	// consume them exactly once; duplicate reads previously broke SetFlag-based
+	// consume them exactly once, duplicate reads previously broke SetFlag-based
 	// collectible setup. Observe only the native career-word transition.
 	if (result && THPS3AP_HasStateSnapshot()) {
 		for (goal = 2; goal >= 0; --goal) {
@@ -1557,7 +1571,7 @@ int __cdecl apJustGotFlagHook(void *params, void *script) {
 		uint32_t flag = 0;
 		if (getChecksumParam(params, NULL, "flag", &flag, 1) &&
 			flag >= 51 && flag <= 55) {
-			// Physical stat pickups must not trigger the end-run stats menu;
+			// Physical stat pickups must not trigger the end-run stats menu.
 			// received AP stat items are applied directly to the profile.
 			return 0;
 		}
@@ -1932,6 +1946,44 @@ void apInstallGrindEngageHook(void) {
 	patchDWord(site + 1, (uint32_t)apGrindEngageHook - (uint32_t)site - 5);
 }
 
+static int __cdecl apWallridesAllowed(void) {
+	return THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_WALLRIDE);
+}
+
+// Gate CheckForWallride before it changes physics or raises either wallride exception.
+// Its native __thiscall takes no arguments and returns a bool in AL.
+__declspec(naked) void apWallrideEngageHook(void) {
+	__asm {
+		pushfd
+		pushad
+		call apWallridesAllowed
+		test eax, eax
+		jnz allowWallride
+		popad
+		popfd
+		xor al, al
+		ret
+	allowWallride:
+		popad
+		popfd
+		sub esp, 0x90
+		push 0x004a32c6
+		ret
+	}
+}
+
+void apInstallWallrideEngageHook(void) {
+	uint8_t *site = (uint8_t *)0x004a32c0;
+	const uint8_t expected[] = {0x81, 0xec, 0x90, 0x00, 0x00, 0x00};
+	if (memcmp(site, expected, sizeof(expected)) != 0) {
+		THPS3AP_DebugLog("wallride-hook unexpected bytes at %p", site);
+		return;
+	}
+	patchNop(site, sizeof(expected));
+	patchByte(site, 0xe9);
+	patchDWord(site + 1, (uint32_t)apWallrideEngageHook - (uint32_t)site - 5);
+}
+
 static void *__fastcall apScriptConstructorHook(
 	void *object,
 	void *unusedEdx,
@@ -1990,7 +2042,7 @@ int __cdecl apCareerStartLevelHook(void *params, void *script) {
 	apDiscardPendingGaps();
 	// CareerStartLevel copies persisted per-level words into active career
 	// state before node loading and spawn. Reconcile AP-owned objective and stat
-	// bits at that boundary; do not run the full per-frame pump here.
+	// bits at that boundary, do not run the full per-frame pump here.
 	if (THPS3AP_HasStateSnapshot()) {
 		writes = THPS3AP_ReconcileCareerBits();
 		THPS3AP_ApplyCareerTimerBonus();
@@ -2059,9 +2111,6 @@ int __cdecl apLoadRequestedLevelHook() {
 }
 
 void patchArchipelagoHooks() {
-	// Rewrite AP panel colors after construction but before inline tags parse.
-	patchCall((void *)0x00456fad, THPS3AP_TextLayoutHook);
-
 	// GetGlobalFlag QScript callback. This is what levelmenu.qb uses to
 	// decide whether each career level entry is selectable or static.
 	patchDWord((void *)0x005b7f6c, apGetGlobalFlagHook);
@@ -2087,6 +2136,7 @@ void patchArchipelagoHooks() {
 	apEnsureCustomSkaterAllowedCommand();
 	apInstallLipEngageHook();
 	apInstallGrindEngageHook();
+	apInstallWallrideEngageHook();
 	apInstallGapTouchTraceHooks();
 	apInstallAcceptedGapHook();
 	patchCall(0x004af027, apScoreLandedHook);
@@ -2192,6 +2242,7 @@ void initPatch() {
 	// PartyMod's post-launch initialization hook runs outside the loader lock.
 	// Starting worker threads from DllMain destabilizes THPS3's early Direct3D
 	// initialization on current Windows versions.
+	THPS3AP_InitializeConsole(configFile);
 	THPS3AP_StartBridge(NULL);
 	{
 		char server[256] = {0};
@@ -2200,12 +2251,7 @@ void initPatch() {
 		GetPrivateProfileString("Archipelago", "Server", "", server, sizeof(server), configFile);
 		GetPrivateProfileString("Archipelago", "Slot", "", slot, sizeof(slot), configFile);
 		GetPrivateProfileString("Archipelago", "Password", "", password, sizeof(password), configFile);
-		if (server[0] != '\0' && slot[0] != '\0') {
-			printf("Starting embedded Archipelago client for slot %s\n", slot);
-			THPS3AP_StartEmbeddedClient(server, slot, password, isDebug);
-		} else {
-			printf("Archipelago Server/Slot not configured; waiting for an external client\n");
-		}
+		THPS3AP_StartEmbeddedClient(server, slot, password, isDebug);
 	}
 
 	printf("Patch Initialized\n");
@@ -2221,7 +2267,7 @@ void apRefreshConnectionFooter(void) {
 	}
 	((void (__cdecl *)(void *, char *))0x004ce940)(
 		apVersionNumberTarget,
-		connected ? " Archipelago - Active" : " Archipelago - Connecting");
+		connected ? " Archipelago - Active | F1: Console" : " Archipelago - Connecting | F1: Console");
 	apFooterConnected = connected;
 }
 
@@ -2234,6 +2280,8 @@ int getVersionNumberHook(void *param) {
 	apVersionNumberTarget = unkp;
 	apFooterConnected = -1;
 	apRefreshConnectionFooter();
+	// the footer's show event marks the visible main menu, after startup scripts load
+	THPS3AP_ConsoleMainMenuReady();
 	return 1;
 }
 

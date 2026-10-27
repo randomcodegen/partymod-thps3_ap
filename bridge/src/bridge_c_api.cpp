@@ -1,4 +1,6 @@
 #include "thps3_ap/bridge_c_api.h"
+#include "thps3_ap/deathlink.hpp"
+#include "thps3_ap/console.hpp"
 #include "thps3_ap/game_state.hpp"
 #include "thps3_ap/bridge_runtime.hpp"
 
@@ -21,8 +23,6 @@
 #include <vector>
 
 namespace {
-
-#include "onani_hud_font.inc"
 
 std::atomic_bool g_bridge_started = false;
 std::atomic_bool g_collectible_markers_enabled = false;
@@ -95,7 +95,9 @@ void* g_stat_assignment_profile = nullptr;
 std::array<std::uint32_t, 10> g_last_stat_assignment{};
 void* g_appearance_profile = nullptr;
 bool g_appearance_initialized = false;
+bool g_appearance_reload_requested = false;
 std::string g_last_appearance;
+std::string g_server_appearance;
 std::string g_pending_appearance;
 std::chrono::steady_clock::time_point g_appearance_changed_at{};
 std::deque<std::string> g_restored_appearance_strings;
@@ -208,6 +210,7 @@ bool IsAppearanceScalar(std::uint32_t key) {
         constexpr std::array names{
             "display_name", "hometown", "age", "height", "weight",
             "trickstyle", "stance", "pushstyle",
+            "default_trick_mapping",
         };
         std::array<std::uint32_t, names.size()> result{};
         for (std::size_t index = 0; index < names.size(); ++index) {
@@ -261,19 +264,22 @@ void AppendAppearanceField(
 
 std::string CaptureAppearance(void* profile) {
     std::string output = "A1;";
-    ProfileField* field = *reinterpret_cast<ProfileField**>(
-        static_cast<std::uint8_t*>(profile) + 0x694);
-    for (; field != nullptr && output.size() < 32768; field = field->next) {
-        if (IsAppearanceScalar(field->key)) {
-            AppendAppearanceField(output, field->key, 0, *field);
-        } else if (IsAppearanceRoot(field->key) &&
-                   (field->type == 10 || field->type == 11) &&
-                   field->value != 0) {
-            auto** const nested = reinterpret_cast<ProfileField**>(field->value);
-            for (ProfileField* child = *nested;
-                 child != nullptr && output.size() < 32768;
-                 child = child->next) {
-                AppendAppearanceField(output, field->key, child->key, *child);
+    // THPS3 stores visual parts separately from personal details and stats
+    for (const std::size_t offset : {0x130u, 0x694u}) {
+        ProfileField* field = *reinterpret_cast<ProfileField**>(
+            static_cast<std::uint8_t*>(profile) + offset);
+        for (; field != nullptr && output.size() < 32768; field = field->next) {
+            if (IsAppearanceScalar(field->key)) {
+                AppendAppearanceField(output, field->key, 0, *field);
+            } else if (IsAppearanceRoot(field->key) &&
+                       (field->type == 10 || field->type == 11) &&
+                       field->value != 0) {
+                auto** const nested = reinterpret_cast<ProfileField**>(field->value);
+                for (ProfileField* child = *nested;
+                     child != nullptr && output.size() < 32768;
+                     child = child->next) {
+                    AppendAppearanceField(output, field->key, child->key, *child);
+                }
             }
         }
     }
@@ -287,12 +293,32 @@ bool ParseHex(std::string_view text, std::uint32_t& value) {
     return result.ec == std::errc{} && result.ptr == text.data() + text.size();
 }
 
+void RestoreNaturalSkinTint(void* profile) {
+    ProfileField* const fields = *reinterpret_cast<ProfileField**>(
+        static_cast<std::uint8_t*>(profile) + 0x130);
+    // head choices already supply skin tones. tinting skin like clothing can
+    // turn the entire body black (brightness zero) or an unnatural color
+    for (const char* name : {"head", "skin"}) {
+        const bool skin = std::strcmp(name, "skin") == 0;
+        ProfileField* root = FindProfileField(fields, QbChecksum(name));
+        if (root == nullptr || (root->type != 10 && root->type != 11) || !root->value) {
+            continue;
+        }
+        for (ProfileField* field = *reinterpret_cast<ProfileField**>(root->value);
+             field != nullptr; field = field->next) {
+            if (field->type != 1) continue;
+            if (field->key == QbChecksum("h")) field->value = skin ? 180 : 0;
+            else if (field->key == QbChecksum("s")) field->value = skin ? 100 : 50;
+            else if (field->key == QbChecksum("v")) field->value = 100;
+            else if (field->key == QbChecksum("use_default_hsv")) field->value = 1;
+        }
+    }
+}
+
 void ApplyAppearance(void* profile, std::string_view appearance) {
     if (!appearance.starts_with("A1;") || appearance.size() > 32768) {
         return;
     }
-    ProfileField* const fields = *reinterpret_cast<ProfileField**>(
-        static_cast<std::uint8_t*>(profile) + 0x694);
     std::size_t position = 3;
     while (position < appearance.size()) {
         const std::size_t end = appearance.find(';', position);
@@ -313,6 +339,9 @@ void ApplyAppearance(void* profile, std::string_view appearance) {
             !(IsAppearanceScalar(root_key) || IsAppearanceRoot(root_key))) {
             continue;
         }
+        ProfileField* const fields = *reinterpret_cast<ProfileField**>(
+            static_cast<std::uint8_t*>(profile) +
+            (IsAppearanceRoot(root_key) ? 0x130 : 0x694));
         ProfileField* field = FindProfileField(fields, root_key);
         if (field == nullptr) {
             continue;
@@ -344,7 +373,7 @@ void ApplyAppearance(void* profile, std::string_view appearance) {
             }
             if (field->type == 4) {
                 using CreateString = char* (__cdecl *)(std::uint32_t);
-                char* const value = reinterpret_cast<CreateString>(0x00428c4e)(
+                char* const value = reinterpret_cast<CreateString>(0x004113e0)(
                     static_cast<std::uint32_t>(decoded.size() + 1));
                 std::memcpy(value, decoded.c_str(), decoded.size() + 1);
                 field->value = reinterpret_cast<std::uint32_t>(value);
@@ -360,13 +389,94 @@ void ApplyAppearance(void* profile, std::string_view appearance) {
             }
         }
     }
+    if (THPS3AP_IsCustomSkaterSelected()) {
+        RestoreNaturalSkinTint(profile);
+    }
+}
+
+void RandomizeCustomSkater(void* profile) {
+    // use THPS3's option sets and compatibility rules for clothing and meshes
+    const auto random = reinterpret_cast<int (__cdecl *)(int)>(0x0040e470);
+    ProfileField* fields = *reinterpret_cast<ProfileField**>(
+        static_cast<std::uint8_t*>(profile) + 0x130);
+    ProfileField* body = FindProfileField(fields, QbChecksum("body_type"));
+    if (body != nullptr && (body->type == 10 || body->type == 11) && body->value) {
+        ProfileField* value = FindProfileField(
+            *reinterpret_cast<ProfileField**>(body->value), QbChecksum("value"));
+        if (value != nullptr && value->type == 13) {
+            value->value = QbChecksum(random(2) ? "female" : "male");
+        }
+    }
+    // the profile method behind RandomizeAppearance also sets height and weight
+    reinterpret_cast<void (__thiscall *)(void*)>(0x004bdbc0)(profile);
+    fields = *reinterpret_cast<ProfileField**>(
+        static_cast<std::uint8_t*>(profile) + 0x130);
+    // native randomization picks parts, colors use the CAS sliders' ranges
+    for (ProfileField* root = fields; root != nullptr; root = root->next) {
+        if (!IsAppearanceRoot(root->key) || root->key == QbChecksum("skin") ||
+            root->key == QbChecksum("head") ||
+            (root->type != 10 && root->type != 11) || !root->value) {
+            continue;
+        }
+        for (ProfileField* field = *reinterpret_cast<ProfileField**>(root->value);
+             field != nullptr; field = field->next) {
+            if (field->type != 1) continue;
+            if (field->key == QbChecksum("h")) field->value = random(72) * 5;
+            else if (field->key == QbChecksum("s")) field->value = random(51) * 2;
+            else if (field->key == QbChecksum("v")) field->value = random(51) * 2;
+            else if (field->key == QbChecksum("use_default_hsv")) field->value = 0;
+        }
+    }
+    fields = *reinterpret_cast<ProfileField**>(
+        static_cast<std::uint8_t*>(profile) + 0x694);
+    std::string details = "A1;";
+    const auto set = [&](const char* name, std::uint32_t value) {
+        if (ProfileField* field = FindProfileField(fields, QbChecksum(name))) {
+            ProfileField changed = *field;
+            changed.value = value;
+            AppendAppearanceField(details, field->key, 0, changed);
+        }
+    };
+    constexpr std::array first_names{
+        "Alex", "Sam", "Jordan", "Casey", "Riley", "Morgan", "Jamie", "Taylor"};
+    constexpr std::array last_names{
+        "Smith", "Jones", "Lee", "Brown", "Davis", "Miller", "Wilson", "Clark"};
+    constexpr std::array towns{
+        "Los Angeles, CA", "San Diego, CA", "New York, NY", "Vancouver, Canada",
+        "London, UK", "Berlin, Germany", "Tokyo, Japan", "Sydney, Australia"};
+    const std::string name = std::string(first_names[random(first_names.size())]) +
+        " " + last_names[random(last_names.size())];
+    set("display_name", reinterpret_cast<std::uint32_t>(name.c_str()));
+    set("hometown", reinterpret_cast<std::uint32_t>(towns[random(towns.size())]));
+    set("age", 5 + random(76));
+    set("stance", random(2) ? QbChecksum("goofy") : 0x2bfc8eb5u);
+    constexpr std::array push_styles{"never_mongo", "always_mongo", "mongo_when_switch"};
+    set("pushstyle", QbChecksum(push_styles[random(push_styles.size())]));
+    // stock regular-trick presets:
+    // independent/special assignments need persistent per-slot overrides.
+    // AP category permissions still apply
+    constexpr std::array trick_sets{
+        "HawkTricks_default", "CaballeroTricks_default", "CampbellTricks_default",
+        "GlifbergTricks_default", "KostonTricks_default", "LasekTricks_default",
+        "MargeraTricks_default", "MullenTricks_default", "MuskaTricks_default",
+        "ReynoldsTricks_default", "RowleyTricks_default", "SteamerTricks_default",
+        "ThomasTricks_default"};
+    set("default_trick_mapping", QbChecksum(trick_sets[random(trick_sets.size())]));
+    ApplyAppearance(profile, details);
 }
 
 void SyncAppearance(void* profile) {
+    const bool custom = THPS3AP_IsCustomSkaterSelected() != FALSE;
+    // wait for the selected profile and its saved appearance before creating CAS
+    if (custom && (!THPS3AP_IsSelectedSkaterActive() ||
+                   !thps3_ap::AppearanceStorageLoaded())) {
+        return;
+    }
     if (profile != g_appearance_profile) {
         g_appearance_profile = profile;
         g_appearance_initialized = false;
         g_last_appearance.clear();
+        g_server_appearance.clear();
         g_pending_appearance.clear();
     }
     if (!g_appearance_initialized) {
@@ -374,8 +484,17 @@ void SyncAppearance(void* profile) {
         if (thps3_ap::AppearanceStorageLoaded() &&
             thps3_ap::GetAppearance(saved)) {
             ApplyAppearance(profile, saved);
+            g_server_appearance = saved;
+            g_appearance_reload_requested = custom;
             g_last_appearance = CaptureAppearance(profile);
+            if (custom && g_last_appearance != saved) {
+                thps3_ap::QueueAppearance(g_last_appearance);
+            }
         } else {
+            if (custom) {
+                RandomizeCustomSkater(profile);
+                g_appearance_reload_requested = true;
+            }
             g_last_appearance = CaptureAppearance(profile);
             thps3_ap::QueueAppearance(g_last_appearance);
         }
@@ -383,12 +502,18 @@ void SyncAppearance(void* profile) {
         return;
     }
     std::string saved;
-    if (thps3_ap::GetAppearance(saved) &&
-        saved != g_last_appearance && saved != g_pending_appearance) {
-        ApplyAppearance(profile, saved);
-        g_last_appearance = CaptureAppearance(profile);
-        g_pending_appearance.clear();
-        return;
+    if (thps3_ap::GetAppearance(saved) && saved != g_server_appearance) {
+        g_server_appearance = saved;
+        if (saved != g_last_appearance && saved != g_pending_appearance) {
+            ApplyAppearance(profile, saved);
+            g_appearance_reload_requested = custom;
+            g_last_appearance = CaptureAppearance(profile);
+            g_pending_appearance.clear();
+            if (custom && g_last_appearance != saved) {
+                thps3_ap::QueueAppearance(g_last_appearance);
+            }
+            return;
+        }
     }
     if (!thps3_ap::AppearanceStorageLoaded()) {
         return;
@@ -409,6 +534,22 @@ void SyncAppearance(void* profile) {
         g_pending_appearance.clear();
         thps3_ap::QueueAppearance(current);
     }
+}
+
+bool RestoreCustomSkaterPreset(void* profile) {
+    if (profile == nullptr || !THPS3AP_IsCustomSkaterSelected() ||
+        !THPS3AP_IsSelectedSkaterActive() || !thps3_ap::AppearanceStorageLoaded()) {
+        return false;
+    }
+    if (profile != g_appearance_profile || !g_appearance_initialized) {
+        SyncAppearance(profile);
+    } else {
+        // use the latest stored snapshot, even while the server reply lags.
+        // avoid the stock reset, which also destroys the AP profile's details
+        ApplyAppearance(profile, g_last_appearance);
+        g_pending_appearance.clear();
+    }
+    return g_appearance_initialized;
 }
 
 void SyncStatAssignment(void* profile, std::uint32_t received_points) {
@@ -483,6 +624,24 @@ std::uint8_t* CurrentSkater() {
         }
     }
     return reinterpret_cast<std::uint8_t*>(address);
+}
+
+void ApplyDeathLinkBail() {
+    auto* const skater = CurrentSkater();
+    const bool bailing = skater != nullptr && skater[0x83b0] != 0;
+    const auto level = g_current_career_level.load(std::memory_order_acquire);
+    const bool in_game = skater != nullptr && level >= 1 && level <= 9 &&
+        !IsGamePaused() && THPS3AP_IsSelectedSkaterActive() &&
+        skater[0x84cc] != 0 &&
+        *reinterpret_cast<void**>(skater + 0x9c) != nullptr;
+    auto& deathlink = thps3_ap::DeathLink();
+    deathlink.ObserveBail(bailing, in_game);
+    if (in_game && deathlink.BeginReceivedBail(bailing)) {
+        // Obj_SwitchScript replaces the skater's active script on the game thread
+        using SwitchScript = void (__thiscall *)(void*, std::uint32_t, void*);
+        reinterpret_cast<SwitchScript>(0x004c2780)(
+            skater, QbChecksum("NoseManualBail"), nullptr);
+    }
 }
 
 void ApplyManualTrickPermission() {
@@ -817,214 +976,6 @@ void RestoreGapSectors() {
     g_gap_logged_draw_sectors.clear();
     g_gap_markers.clear();
     g_gap_rail_lines.clear();
-}
-
-constexpr std::uint32_t kPropertiesChecksum = 0x783cce38u;
-constexpr std::uint32_t kIdChecksum = 0x40c698afu;
-constexpr std::array<std::uint32_t, 9> kChatPropertyChecksums{{
-    0x9702d6e6u,  // chat1props
-    0x1196a448u,  // chat2props
-    0xdaca77edu,  // chat3props
-    0xc7cf4755u,  // chat4props
-    0x0c9394f0u,  // chat5props
-    0x8a07e65eu,  // chat6props
-    0x415b35fbu,  // chat7props
-    0xb00d872eu,  // chat8props
-    0x7b51548bu,  // chat9props
-}};
-constexpr std::array<std::uint32_t, 9> kChatLineIds{{
-    0x641864b7u,  // AP_Chat_Line_1
-    0xfd11350du,  // AP_Chat_Line_2
-    0x8a16059bu,  // AP_Chat_Line_3
-    0x14729038u,  // AP_Chat_Line_4
-    0x6375a0aeu,  // AP_Chat_Line_5
-    0xfa7cf114u,  // AP_Chat_Line_6
-    0x8d7bc182u,  // AP_Chat_Line_7
-    0x1dc4dc13u,  // AP_Chat_Line_8
-    0x6ac3ec85u,  // AP_Chat_Line_9
-}};
-constexpr std::array<std::size_t, 5> kChatRows{{0, 1, 2, 3, 4}};
-static_assert(kChatRows.size() == 5 && kChatRows.back() == 4);
-bool g_ap_chat_palette_active = false;
-std::uint32_t g_ap_chat_active_id = 0;
-std::uint32_t g_ap_chat_active_properties = 0;
-constexpr std::array<std::array<std::uint8_t, 5>, 8> kApChatPalette{{
-    {{109, 139, 232, 128, 15}},  // useful: slateblue
-    {{176, 96, 255, 128, 15}},   // progression: purple
-    {{255, 255, 0, 128, 15}},    // player: ANSI yellow
-    {{255, 255, 255, 128, 15}},  // base/reset: white
-    {{0, 238, 238, 128, 15}},    // normal item: cyan
-    {{250, 128, 114, 128, 15}},  // trap: salmon
-    {{0, 255, 127, 128, 15}},    // location: green
-    {{238, 0, 238, 128, 15}},    // own player: magenta
-}};
-
-void LogLiveChatPalette(std::uint32_t source_count) {
-    static bool logged = false;
-    if (logged) {
-        return;
-    }
-    std::printf(
-        "[debug] live chat layout palette: source count=%u -> AP count=%u\n",
-        static_cast<unsigned>(source_count),
-        static_cast<unsigned>(kApChatPalette.size()));
-    for (std::size_t index = 0; index < kApChatPalette.size(); ++index) {
-        std::printf(
-            "[debug] live chat layout C%u: %u,%u,%u\n",
-            static_cast<unsigned>(index), kApChatPalette[index][0],
-            kApChatPalette[index][1], kApChatPalette[index][2]);
-    }
-    logged = true;
-}
-
-void* FindPanelElement(std::uint32_t id_checksum) {
-    using GetMenuManager = void* (__cdecl *)(int);
-    using FreeMenuManager = void (__cdecl *)();
-    using GetMenuElement = void* (__thiscall *)(void*, std::uint32_t, int);
-    void* const manager = reinterpret_cast<GetMenuManager>(0x004D12A0)(0);
-    void* const element = manager != nullptr
-        ? reinterpret_cast<GetMenuElement>(0x004D23B0)(
-            manager, id_checksum, 1)
-        : nullptr;
-    if (manager != nullptr) {
-        reinterpret_cast<FreeMenuManager>(0x004D12F0)();
-    }
-    return element;
-}
-
-bool DestroyPanelElement(std::uint32_t id_checksum) {
-    using ResolveQbKey = void* (__cdecl *)(std::uint32_t);
-    using DestroyElement = bool (__cdecl *)(void*, void*);
-    auto* const qb_header = static_cast<std::uint8_t*>(
-        reinterpret_cast<ResolveQbKey>(0x00426340)(0xab938d1eu));
-    if (qb_header == nullptr ||
-        *reinterpret_cast<std::uint32_t*>(qb_header + 4) != 8) {
-        return false;
-    }
-    const auto destroy_element = reinterpret_cast<DestroyElement>(
-        *reinterpret_cast<std::uint32_t*>(qb_header + 12));
-    if (destroy_element == nullptr) {
-        return false;
-    }
-    QbStructHeader id{};
-    id.type = 13;
-    id.key = kIdChecksum;
-    id.value.raw = id_checksum;
-    QbStruct params{&id, &id};
-    alignas(8) std::byte script[0x398]{};
-    return destroy_element(&params, script);
-}
-
-bool LaunchPanelText(
-    const char* message,
-    std::uint32_t id_checksum,
-    std::uint32_t properties_checksum,
-    bool use_ap_palette = true) {
-    using ResolveQbKey = void* (__cdecl *)(std::uint32_t);
-    using LaunchPanelMessage = bool (__cdecl *)(void*, void*);
-    const auto resolve_qb_key =
-        reinterpret_cast<ResolveQbKey>(0x00426340);
-    auto* const qb_header = static_cast<std::uint8_t*>(
-        resolve_qb_key(0xf9f4ef2cu));  // LaunchPanelMessage
-    if (qb_header == nullptr ||
-        *reinterpret_cast<std::uint32_t*>(qb_header + 4) != 8) {
-        return false;
-    }
-    const auto launch_panel_message = reinterpret_cast<LaunchPanelMessage>(
-        *reinterpret_cast<std::uint32_t*>(qb_header + 12));
-    if (launch_panel_message == nullptr) {
-        return false;
-    }
-    QbStructHeader id{};
-    QbStructHeader properties{};
-    QbStructHeader text{};
-    text.type = 3;
-    text.value.text = message;
-    text.next = &id;
-    id.type = 13;
-    id.key = kIdChecksum;
-    id.value.raw = id_checksum;
-    id.next = &properties;
-    properties.type = 13;
-    properties.key = kPropertiesChecksum;
-    properties.value.raw = properties_checksum;
-    QbStruct params{&text, &properties};
-    alignas(8) std::byte script[0x398]{};
-    void* const element_before = FindPanelElement(id_checksum);
-    const bool destroyed = DestroyPanelElement(id_checksum);
-    g_ap_chat_active_id = id_checksum;
-    g_ap_chat_active_properties = properties_checksum;
-    g_ap_chat_palette_active = use_ap_palette;
-    const bool launched = launch_panel_message(&params, script);
-    g_ap_chat_palette_active = false;
-    g_ap_chat_active_id = 0;
-    g_ap_chat_active_properties = 0;
-    void* const element_after = FindPanelElement(id_checksum);
-    std::printf(
-        "[debug] panel element id=%08x props=%08x before=%p destroyed=%u "
-        "launched=%u after=%p\n",
-        id_checksum, properties_checksum, element_before,
-        destroyed ? 1u : 0u, launched ? 1u : 0u, element_after);
-    return launched;
-}
-
-constexpr std::chrono::milliseconds DisplayMessageDelay(bool more) {
-    return std::chrono::milliseconds(more ? 100 : 1000);
-}
-
-static_assert(DisplayMessageDelay(true).count() == 100);
-static_assert(DisplayMessageDelay(false).count() == 1000);
-
-constexpr bool StartsMultilineMessage(bool more, bool continuing) {
-    return more && !continuing;
-}
-
-static_assert(StartsMultilineMessage(true, false));
-static_assert(!StartsMultilineMessage(true, true));
-static_assert(!StartsMultilineMessage(false, false));
-
-void DisplayNextMessage() {
-    using Clock = std::chrono::steady_clock;
-    static auto next_message_time = Clock::time_point{};
-    static auto last_message_time = Clock::time_point{};
-    static std::size_t next_chat_row = 0;
-    static bool continuing = false;
-
-    const auto now = Clock::now();
-    if (now < next_message_time) {
-        return;
-    }
-    if (last_message_time != Clock::time_point{} &&
-        now - last_message_time >= std::chrono::milliseconds(7500)) {
-        next_chat_row = 0;
-    }
-
-    std::string message;
-    bool more = false;
-    if (!thps3_ap::TakeDisplayMessage(message, more)) {
-        return;
-    }
-    if (StartsMultilineMessage(more, continuing)) {
-        next_chat_row = 0;
-    }
-
-    const std::size_t row = kChatRows[next_chat_row];
-    const bool displayed = LaunchPanelText(
-        message.c_str(),
-        kChatLineIds[row],
-        kChatPropertyChecksums[row]);
-    std::printf(
-        "[debug] display HUD row=%u props=%08x continuing=%u more=%u %s: %s\n",
-        static_cast<unsigned>(next_chat_row + 1),
-        kChatPropertyChecksums[row],
-        continuing ? 1u : 0u,
-        more ? 1u : 0u,
-        displayed ? "accepted" : "rejected",
-        message.c_str());
-    next_chat_row = (next_chat_row + 1) % kChatRows.size();
-    continuing = more;
-    last_message_time = now;
-    next_message_time = now + DisplayMessageDelay(more);
 }
 
 void UpdateCassetteProgressText() {
@@ -1445,35 +1396,6 @@ bool ReadCurrentSkaterChecksum(std::uint32_t& checksum) {
 
 }  // namespace
 
-extern "C" void __fastcall THPS3AP_TextLayoutHook(
-    void* text_layout,
-    void*,
-    std::uintptr_t arg1,
-    std::uintptr_t arg2,
-    std::uintptr_t arg3,
-    std::uintptr_t arg4,
-    std::uintptr_t arg5,
-    std::uintptr_t arg6,
-    std::uintptr_t arg7,
-    std::uintptr_t arg8) {
-    if (g_ap_chat_palette_active) {
-        LogLiveChatPalette(arg6);
-        std::printf(
-            "[debug] text constructor id=%08x props=%08x layout=%p "
-            "source_colors=%p source_count=%u\n",
-            g_ap_chat_active_id, g_ap_chat_active_properties, text_layout,
-            reinterpret_cast<void*>(arg5), static_cast<unsigned>(arg6));
-        arg5 = reinterpret_cast<std::uintptr_t>(kApChatPalette.data());
-        arg6 = kApChatPalette.size();
-    }
-    using Layout = void (__thiscall *)(
-        void*, std::uintptr_t, std::uintptr_t, std::uintptr_t,
-        std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t,
-        std::uintptr_t);
-    reinterpret_cast<Layout>(0x004C8270)(
-        text_layout, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
-}
-
 extern "C" void THPS3AP_DebugLog(const char* format, ...) {
     std::call_once(g_debug_log_init, [] {
         if (GetTempPathA(MAX_PATH, g_debug_log_path) == 0 ||
@@ -1780,8 +1702,8 @@ extern "C" void THPS3AP_PumpMainThread() {
             if (connection_wait_started == 0) {
                 connection_wait_started = now;
             }
-            if (!connection_timeout_shown && thps3_ap::StartupConnectionTimedOut(
-                    true, now - connection_wait_started)) {
+            if (!connection_timeout_shown && (!thps3_ap::ConnectionError().empty() ||
+                thps3_ap::StartupConnectionTimedOut(true, now - connection_wait_started))) {
                 connection_timeout_shown = true;
                 std::string error = thps3_ap::ConnectionError();
                 if (error.empty()) {
@@ -1789,13 +1711,8 @@ extern "C" void THPS3AP_PumpMainThread() {
                             "Check Server, Slot, and Password in partymod.ini, "
                             "then start THPS3 again.";
                 }
-                const HWND game_window = GetActiveWindow();
-                MessageBoxA(
-                    game_window,
-                    error.c_str(),
-                    "Archipelago connection failed",
-                    MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
-                PostMessageA(game_window, WM_CLOSE, 0, 0);
+                thps3_ap::QueueDisplayMessage(error + "\nUse /server, /slot, /password and /connect to retry, or /quit to exit.");
+                THPS3AP_OpenConsole();
             }
         }
         return;
@@ -1831,12 +1748,12 @@ extern "C" void THPS3AP_PumpMainThread() {
     }
 
     THPS3AP_ApplyCareerTimerBonus();
+    ApplyDeathLinkBail();
     ValidateGapHighlight();
     ApplyGapMenuData();
     ApplyGapAdvanceRequest();
     ApplyAllGapHighlightsRequest();
     ApplyPendingGapHighlight();
-    DisplayNextMessage();
     ApplyManualTrickPermission();
     ApplyLipTrickPermission();
     ApplySpecialTrickPermission();
@@ -1927,7 +1844,7 @@ extern "C" void THPS3AP_PumpMainThread() {
         (unlocked ? set_career_flag : unset_career_flag)(
             flag_bank, entry.career_flag);
     }
-    // Keep Cruise Ship visible as a stable AP location; flag 197 still
+    // Keep Cruise Ship visible as a stable AP location. Flag 197 still
     // independently controls whether its cassette can be selected.
     set_career_flag(flag_bank, 159);  // SPECIAL_HAS_SEEN_SHIP
     std::uint32_t readback_mask = 0;
@@ -1937,6 +1854,12 @@ extern "C" void THPS3AP_PumpMainThread() {
         }
     }
     release_profile_manager();
+
+    if (g_appearance_reload_requested) {
+        g_appearance_reload_requested = false;
+        using RunScript = void (__cdecl *)(const char*, void*, int, int);
+        reinterpret_cast<RunScript>(0x00428240)("reload_cas", nullptr, 0, 0);
+    }
 
     // Cassette objects cache their unlocked state at +0x1d4 when the selector
     // is constructed. Update that cache continuously so a snapshot received
@@ -2473,6 +2396,30 @@ extern "C" void THPS3AP_ToggleAllGapHighlights() {
         g_current_career_level.load(std::memory_order_acquire)));
 }
 
+extern "C" void THPS3AP_ClearGapHighlights() {
+    g_gap_auto_enabled = false;
+    g_all_gap_highlights_enabled = false;
+    g_gap_highlighted_checksum = 0;
+    g_gap_highlighted_row = kGapMenuRowCount;
+    g_gap_advance_requested = false;
+    g_all_gap_highlights_toggle_requested = false;
+    g_all_gap_highlights_refresh_pending = false;
+    g_gap_highlight_pending_row = 0xffffffffu;
+    RestoreGapSectors();
+    const std::lock_guard lock(g_gap_menu_mutex);
+    g_active_gap_hud_text.clear();
+    g_gap_menu_pending = true;
+}
+
+extern "C" void THPS3AP_RequestGapMenuRefresh() {
+    const auto level = g_current_career_level.load(std::memory_order_acquire);
+    if (level >= 1 && level <= 9) THPS3AP_QueueGapListRequest(static_cast<int>(level));
+}
+
+extern "C" void THPS3AP_ClearMessagePopups() {
+    thps3_ap::ClearDisplayMessages();
+}
+
 extern "C" BOOL THPS3AP_HasActiveStageOverlay() {
     return (!g_gap_tint_sectors.empty() || !g_gap_markers.empty() ||
             !g_gap_rail_lines.empty() ||
@@ -2540,7 +2487,9 @@ extern "C" void THPS3AP_DrawCapturedStageOverlays(void* device) {
 }
 
 extern "C" void THPS3AP_DrawGapTintOverlay(void* device) {
-    if (device == nullptr || g_gap_tint_sectors.empty()) {
+    const auto mode = thps3_ap::ConsoleGapMarkerMode();
+    if (device == nullptr || g_gap_tint_sectors.empty() ||
+        mode == thps3_ap::ConsoleMarkerMode::Bounds || mode == thps3_ap::ConsoleMarkerMode::Off) {
         return;
     }
 
@@ -2693,25 +2642,28 @@ extern "C" void THPS3AP_DrawGapMarkers(void* device) {
             {x, y, z + collectible_radius, color},
         });
     };
-    for (const GapHighlightEndpoint& marker : g_gap_markers) {
-        if (marker.role == 3u) {
-            float x = 0.0f;
-            float y = 0.0f;
-            float z = 0.0f;
-            if (LiveObjectPosition(marker.node, x, y, z)) {
-                add_cross(x, y + 0.2f, z, kGapHighlightColor);
-                continue;
+    const auto mode = thps3_ap::ConsoleGapMarkerMode();
+    if (mode == thps3_ap::ConsoleMarkerMode::Both || mode == thps3_ap::ConsoleMarkerMode::Bounds) {
+        for (const GapHighlightEndpoint& marker : g_gap_markers) {
+            if (marker.role == 3u) {
+                float x = 0.0f;
+                float y = 0.0f;
+                float z = 0.0f;
+                if (LiveObjectPosition(marker.node, x, y, z)) {
+                    add_cross(x, y + 0.2f, z, kGapHighlightColor);
+                    continue;
+                }
             }
+            const float y = marker.y + 0.2f;
+            const float z = -marker.z;
+            add_cross(marker.x, y, z, kGapHighlightColor);
         }
-        const float y = marker.y + 0.2f;
-        const float z = -marker.z;
-        add_cross(marker.x, y, z, kGapHighlightColor);
-    }
-    for (const GapRailSegment& rail : g_gap_rail_lines) {
-        vertices.push_back({
-            rail.start_x, rail.start_y + 0.2f, -rail.start_z, kGapHighlightColor});
-        vertices.push_back({
-            rail.end_x, rail.end_y + 0.2f, -rail.end_z, kGapHighlightColor});
+        for (const GapRailSegment& rail : g_gap_rail_lines) {
+            vertices.push_back({
+                rail.start_x, rail.start_y + 0.2f, -rail.start_z, kGapHighlightColor});
+            vertices.push_back({
+                rail.end_x, rail.end_y + 0.2f, -rail.end_z, kGapHighlightColor});
+        }
     }
 
     constexpr std::array<unsigned, 23> stat_layouts{
@@ -2880,44 +2832,10 @@ extern "C" BOOL THPS3AP_CollectibleMarkersEnabled() {
 }
 
 extern "C" void THPS3AP_DrawHudOverlay(void* device) {
-    const std::uint32_t level =
-        g_current_career_level.load(std::memory_order_acquire);
-    if (device == nullptr || !THPS3AP_HasStateSnapshot() ||
-        level < 1 || level > 9) {
-        return;
-    }
-    struct Rect {
-        long x1;
-        long y1;
-        long x2;
-        long y2;
-    };
-    struct Viewport {
-        std::uint32_t x;
-        std::uint32_t y;
-        std::uint32_t width;
-        std::uint32_t height;
-        float min_z;
-        float max_z;
-    } viewport{};
-    void** const api = *reinterpret_cast<void***>(device);
-    using GetViewport = long (__stdcall *)(void*, Viewport*);
-    const long viewport_result =
-        reinterpret_cast<GetViewport>(api[41])(device, &viewport);
-    if (viewport_result < 0) {
-        return;
-    }
-    static bool viewport_logged = false;
-    if (!viewport_logged) {
-        GapHighlightLog(
-            "HUD_VIEWPORT x=%u y=%u width=%u height=%u result=%ld",
-            viewport.x, viewport.y, viewport.width, viewport.height,
-            viewport_result);
-        viewport_logged = true;
-    }
+    const std::uint32_t level = g_current_career_level.load(std::memory_order_acquire);
+    if (device == nullptr || !THPS3AP_HasStateSnapshot() || level < 1 || level > 9) return;
     char counter[40];
-    std::snprintf(
-        counter, sizeof(counter), "GAPS: %u/%u (%u)",
+    std::snprintf(counter, sizeof(counter), "GAPS: %u/%u (%u)",
         thps3_ap::CheckedGapCount(static_cast<int>(level)),
         thps3_ap::InLogicGapCount(static_cast<int>(level)),
         thps3_ap::ActiveGapCount(static_cast<int>(level)));
@@ -2926,182 +2844,7 @@ extern "C" void THPS3AP_DrawHudOverlay(void* device) {
         const std::lock_guard lock(g_gap_menu_mutex);
         active_gap = g_active_gap_hud_text;
     }
-    const auto glyph_for = [](char character) -> const HudFontGlyph& {
-        if (character >= 'a' && character <= 'z') {
-            character -= 'a' - 'A';
-        }
-        if (character < 32 || character > 126) {
-            character = '?';
-        }
-        return kOnaniHudGlyphs[character - 32];
-    };
-    const auto text_width = [&glyph_for](std::string_view text) {
-        float width = 0.0f;
-        for (char character : text) {
-            width += glyph_for(character).advance;
-        }
-        return width;
-    };
-    std::vector<Rect> rectangles;
-    rectangles.reserve(2048);
-    std::vector<Rect> background_rectangles;
-    background_rectangles.reserve(2);
-    const auto append_background = [&](float left, float top,
-                                       float width, float height) {
-        const long x1 = static_cast<long>(std::floor(left)) - 4;
-        const long y1 = static_cast<long>(std::floor(top)) - 4;
-        const long x2 = static_cast<long>(std::ceil(left + width)) + 4;
-        const long y2 = static_cast<long>(std::ceil(top + height)) + 4;
-        background_rectangles.push_back({x1, y1, x2, y2});
-    };
-    const auto append_text = [&](std::string_view text, float start_x,
-                                 float start_y, float scale) {
-        float cursor_x = start_x;
-        for (char character : text) {
-            const HudFontGlyph& glyph = glyph_for(character);
-            for (std::size_t row = 0; row < glyph.rows.size(); ++row) {
-                std::uint32_t bit = 0;
-                while (bit < 32) {
-                    while (bit < 32 &&
-                           (glyph.rows[row] & (1u << bit)) == 0) {
-                        ++bit;
-                    }
-                    const std::uint32_t run_start = bit;
-                    while (bit < 32 &&
-                           (glyph.rows[row] & (1u << bit)) != 0) {
-                        ++bit;
-                    }
-                    if (run_start == bit) {
-                        continue;
-                    }
-                    const float left = cursor_x + run_start * scale;
-                    const float top = start_y + row * scale;
-                    const float right = cursor_x + bit * scale;
-                    const float bottom = top + scale;
-                    rectangles.push_back({
-                        static_cast<long>(std::floor(left)),
-                        static_cast<long>(std::floor(top)),
-                        static_cast<long>(std::ceil(right)),
-                        static_cast<long>(std::ceil(bottom))});
-                }
-            }
-            cursor_x += glyph.advance * scale;
-        }
-    };
-    constexpr float counter_scale = 1.5f;
-    const float counter_width = text_width(counter) * counter_scale;
-    const float hud_y = static_cast<float>(viewport.y) + 12.0f;
-    const float counter_x =
-        static_cast<float>(viewport.x + viewport.width) -
-        counter_width - 12.0f;
-    append_background(
-        counter_x, hud_y, counter_width,
-        kOnaniHudFontHeight * counter_scale);
-    append_text(
-        counter, counter_x, hud_y, counter_scale);
-    if (!active_gap.empty()) {
-        const float available = static_cast<float>(viewport.width) - 24.0f;
-        const float unscaled_width = text_width(active_gap);
-        const float active_scale = (std::min)(
-            1.5f, available / unscaled_width);
-        const float active_width = unscaled_width * active_scale;
-        const float active_x = static_cast<float>(viewport.x) +
-            (static_cast<float>(viewport.width) - active_width) * 0.5f;
-        append_background(
-            active_x, hud_y, active_width,
-            kOnaniHudFontHeight * active_scale);
-        append_text(
-            active_gap, active_x, hud_y, active_scale);
-    }
-
-    using Clear = long (__stdcall *)(
-        void*, std::uint32_t, const Rect*, std::uint32_t,
-        std::uint32_t, float, std::uint32_t);
-    struct HudVertex {
-        float x;
-        float y;
-        float z;
-        float rhw;
-        std::uint32_t color;
-    };
-    std::vector<HudVertex> background_vertices;
-    background_vertices.reserve(background_rectangles.size() * 6);
-    constexpr std::uint32_t background_color = 0xa0000000u;
-    for (const Rect& rect : background_rectangles) {
-        const float left = static_cast<float>(rect.x1) - 0.5f;
-        const float top = static_cast<float>(rect.y1) - 0.5f;
-        const float right = static_cast<float>(rect.x2) - 0.5f;
-        const float bottom = static_cast<float>(rect.y2) - 0.5f;
-        background_vertices.insert(background_vertices.end(), {
-            {left, top, 0.0f, 1.0f, background_color},
-            {right, top, 0.0f, 1.0f, background_color},
-            {left, bottom, 0.0f, 1.0f, background_color},
-            {left, bottom, 0.0f, 1.0f, background_color},
-            {right, top, 0.0f, 1.0f, background_color},
-            {right, bottom, 0.0f, 1.0f, background_color},
-        });
-    }
-    using Scene = long (__stdcall *)(void*);
-    using SetState = long (__stdcall *)(void*, std::uint32_t, std::uint32_t);
-    using SetStageState = long (__stdcall *)(
-        void*, std::uint32_t, std::uint32_t, std::uint32_t);
-    using SetTexture = long (__stdcall *)(void*, std::uint32_t, void*);
-    using SetShader = long (__stdcall *)(void*, std::uint32_t);
-    using CreateStateBlock = long (__stdcall *)(
-        void*, std::uint32_t, std::uint32_t*);
-    using ApplyStateBlock = long (__stdcall *)(void*, std::uint32_t);
-    using DeleteStateBlock = long (__stdcall *)(void*, std::uint32_t);
-    using DrawPrimitiveUp = long (__stdcall *)(
-        void*, std::uint32_t, std::uint32_t, const void*, std::uint32_t);
-    const long begin_result = reinterpret_cast<Scene>(api[34])(device);
-    long draw_result = -1;
-    long end_result = -1;
-    if (begin_result >= 0) {
-        std::uint32_t state_block = 0;
-        if (reinterpret_cast<CreateStateBlock>(api[57])(
-                device, 1, &state_block) >= 0) {
-            reinterpret_cast<SetState>(api[50])(device, 7, 0);
-            reinterpret_cast<SetState>(api[50])(device, 14, 0);
-            reinterpret_cast<SetState>(api[50])(device, 15, 0);
-            reinterpret_cast<SetState>(api[50])(device, 19, 5);
-            reinterpret_cast<SetState>(api[50])(device, 20, 6);
-            reinterpret_cast<SetState>(api[50])(device, 22, 1);
-            reinterpret_cast<SetState>(api[50])(device, 27, 1);
-            reinterpret_cast<SetState>(api[50])(device, 28, 0);
-            reinterpret_cast<SetState>(api[50])(device, 137, 0);
-            reinterpret_cast<SetState>(api[50])(device, 168, 0x0f);
-            reinterpret_cast<SetState>(api[50])(device, 171, 1);
-            reinterpret_cast<SetTexture>(api[61])(device, 0, nullptr);
-            reinterpret_cast<SetStageState>(api[63])(device, 0, 1, 2);
-            reinterpret_cast<SetStageState>(api[63])(device, 0, 2, 0);
-            reinterpret_cast<SetStageState>(api[63])(device, 0, 4, 2);
-            reinterpret_cast<SetStageState>(api[63])(device, 0, 5, 0);
-            reinterpret_cast<SetStageState>(api[63])(device, 1, 1, 1);
-            reinterpret_cast<SetShader>(api[88])(device, 0);
-            reinterpret_cast<SetShader>(api[76])(device, 0x44);
-            draw_result = reinterpret_cast<DrawPrimitiveUp>(api[72])(
-                device, 4,
-                static_cast<std::uint32_t>(background_vertices.size() / 3),
-                background_vertices.data(), sizeof(HudVertex));
-            reinterpret_cast<ApplyStateBlock>(api[54])(device, state_block);
-            reinterpret_cast<DeleteStateBlock>(api[56])(device, state_block);
-        }
-        end_result = reinterpret_cast<Scene>(api[35])(device);
-    }
-    constexpr std::uint32_t color = 0xff6d8be8u;
-    const long result = reinterpret_cast<Clear>(api[36])(
-        device, static_cast<std::uint32_t>(rectangles.size()),
-        rectangles.data(), 1, color, 1.0f, 0);  // D3DCLEAR_TARGET
-    static bool clear_logged = false;
-    if (!clear_logged) {
-        GapHighlightLog(
-            "HUD_BACKGROUND begin=%ld draw=%ld end=%ld quads=%u; "
-            "HUD_CLEAR rects=%u result=%ld",
-            begin_result, draw_result, end_result,
-            static_cast<unsigned>(background_rectangles.size()),
-            static_cast<unsigned>(rectangles.size()), result);
-        clear_logged = true;
-    }
+    thps3_ap::DrawHudText(device, counter, active_gap);
 }
 
 extern "C" BOOL THPS3AP_IsSelectedSkaterActive() {
@@ -3117,4 +2860,19 @@ extern "C" BOOL THPS3AP_IsSelectedSkaterActive() {
 
 extern "C" BOOL THPS3AP_IsCustomSkaterSelected() {
     return thps3_ap::SelectedSkaterProfileIndex() == 22 ? TRUE : FALSE;
+}
+
+extern "C" BOOL THPS3AP_RestoreCustomSkaterPreset() {
+    using AcquireProfileManager = void* (__cdecl *)(int);
+    using ReleaseProfileManager = void (__cdecl *)();
+    using GetCurrentProfile = void* (__thiscall *)(void*, void*);
+    void* const manager = reinterpret_cast<AcquireProfileManager>(0x004367E0)(0);
+    void* const profile = manager != nullptr
+        ? reinterpret_cast<GetCurrentProfile>(0x00438B10)(manager, nullptr)
+        : nullptr;
+    const bool restored = RestoreCustomSkaterPreset(profile);
+    reinterpret_cast<ReleaseProfileManager>(0x00436830)();
+    // the calling QB script reloads the model after releasing the manager
+    if (restored) g_appearance_reload_requested = false;
+    return restored ? TRUE : FALSE;
 }

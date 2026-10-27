@@ -44,6 +44,12 @@
     "AHHH!  MY HEAD!": {
       "markers": ["Wild_Totem_Head"]
     },
+    "Buck Wild": {
+      "tint": ["Wilderness_River_Banks07"]
+    },
+    "Felled Oak": {
+      "tint": ["Wilderness_Ramp03"]
+    },
     "Fence Extension": {
       "replace_auto": true,
       "rail_paths": [

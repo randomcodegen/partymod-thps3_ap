@@ -245,7 +245,8 @@ bool HandleFrame(
     } else if (type == "display_message" && payload["text"].isString()) {
         thps3_ap::QueueDisplayMessage(
             payload["text"].asString(),
-            payload["more"].isBool() && payload["more"].asBool());
+            payload["more"].isBool() && payload["more"].asBool(),
+            !(payload["console_logged"].isBool() && payload["console_logged"].asBool()));
     } else if (type == "error" && payload["message"].isString()) {
         thps3_ap::SetConnectionError(payload["message"].asString());
     } else if (type == "gap_menu" && payload["title"].isString()) {

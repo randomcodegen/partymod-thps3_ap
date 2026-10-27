@@ -536,6 +536,7 @@ int isKeyboardTyping() {
 }
 
 void processEvent(SDL_Event *e) {
+	if (THPS3AP_ProcessConsoleEvent(e)) return;
 
 	if (!THPS3AP_HasStateSnapshot() && (
 		e->type == SDL_CONTROLLERBUTTONDOWN ||
@@ -662,7 +663,7 @@ void __cdecl processController(device *dev) {
 	dev->controlData[6] = 127;
 	dev->controlData[7] = 127;
 
-	if (THPS3AP_HasStateSnapshot())
+	if (THPS3AP_HasStateSnapshot() && !THPS3AP_ConsoleCapturesInput())
 	{
 		static uint8_t gapShortcutWasDown;
 		static uint8_t gapShortcutHoldActive;
@@ -724,7 +725,8 @@ void __cdecl processController(device *dev) {
 	// keyboard and controller follow the same AP permissions.
 	if (THPS3AP_HasStateSnapshot() && !menuOnScreen()) {
 		if (!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_GRIND) &&
-			!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_LIP)) {
+			!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_LIP) &&
+			!THPS3AP_IsTrickCategoryUnlocked(THPS3AP_TRICK_WALLRIDE)) {
 			dev->controlData[3] &= ~(0x01 << 4);
 			dev->controlData[12] = 0;
 		}
@@ -823,7 +825,7 @@ int __stdcall getVKeyboardState(uint8_t *out) {
 	uint8_t *keystate = SDL_GetKeyboardState(&keyCount);
 
 	memset(out, 0, 256);
-	if (!THPS3AP_HasStateSnapshot()) {
+	if (!THPS3AP_HasStateSnapshot() || THPS3AP_ConsoleCapturesInput()) {
 		return 1;
 	}
 
@@ -855,7 +857,7 @@ int __stdcall getVKeyboardState(uint8_t *out) {
 }
 
 uint16_t __stdcall getShiftCtrlState(int key) {
-	if (!THPS3AP_HasStateSnapshot()) return 0;
+	if (!THPS3AP_HasStateSnapshot() || THPS3AP_ConsoleCapturesInput()) return 0;
 	if (key == 0x10 && SDL_GetModState() & KMOD_SHIFT) {
 		return 0x8000;
 	} else if (key == 0x11 && SDL_GetModState() & KMOD_CTRL) {
@@ -866,7 +868,7 @@ uint16_t __stdcall getShiftCtrlState(int key) {
 }
 
 uint16_t __stdcall getCapsState(int key) {
-	if (!THPS3AP_HasStateSnapshot()) return 0;
+	if (!THPS3AP_HasStateSnapshot() || THPS3AP_ConsoleCapturesInput()) return 0;
 	if (SDL_GetModState() & KMOD_CAPS) {
 		return 0x0001;
 	}
@@ -879,6 +881,7 @@ int processIntroEvent() {
 
 	SDL_Event e;
 	while(SDL_PollEvent(&e)) {
+		if (THPS3AP_ProcessConsoleEvent(&e)) continue;
 		switch(e.type) {
 			case SDL_CONTROLLERBUTTONDOWN:
 			case SDL_KEYDOWN:

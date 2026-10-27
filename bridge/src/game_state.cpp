@@ -1,4 +1,5 @@
 #include "thps3_ap/game_state.hpp"
+#include "thps3_ap/console.hpp"
 
 #include <array>
 #include <atomic>
@@ -46,12 +47,9 @@ std::array<std::atomic<std::uint32_t>, 9> g_active_item_counts{};
 std::array<std::atomic<std::uint32_t>, 9> g_checked_gap_counts{};
 std::array<std::atomic<std::uint32_t>, 9> g_in_logic_gap_counts{};
 std::array<std::atomic<std::uint32_t>, 9> g_active_gap_counts{};
-std::mutex g_display_message_mutex;
-std::deque<std::pair<std::string, bool>> g_display_messages;
 std::mutex g_connection_error_mutex;
 std::string g_connection_error;
 
-constexpr std::size_t kMaxDisplayMessages = 64;
 struct LevelEntry {
     std::string_view key;
     int number;
@@ -277,26 +275,23 @@ void ParseStatAssignment(const Json::Value& payload) {
 
 namespace thps3_ap {
 
-void QueueDisplayMessage(std::string message, bool more) {
-    if (message.empty()) {
-        return;
-    }
-    const std::lock_guard lock(g_display_message_mutex);
-    if (g_display_messages.size() == kMaxDisplayMessages) {
-        g_display_messages.pop_front();
-    }
-    g_display_messages.emplace_back(std::move(message), more);
+void QueueDisplayMessage(std::string message, bool more, bool log) {
+    auto& state = InGameConsole();
+    const std::lock_guard lock(state.mutex);
+    if (log) state.Append(message, false);
+    if (!state.open && state.popups_ready) state.popups.Add(message, more);
+}
+
+void ClearDisplayMessages() {
+    auto& state = InGameConsole();
+    const std::lock_guard lock(state.mutex);
+    state.popups.Clear();
 }
 
 bool TakeDisplayMessage(std::string& message, bool& more) {
-    const std::lock_guard lock(g_display_message_mutex);
-    if (g_display_messages.empty()) {
-        return false;
-    }
-    message = std::move(g_display_messages.front().first);
-    more = g_display_messages.front().second;
-    g_display_messages.pop_front();
-    return true;
+    auto& state = InGameConsole();
+    const std::lock_guard lock(state.mutex);
+    return state.popups.Take(message, more);
 }
 
 void SetConnectionError(std::string message) {
@@ -347,8 +342,9 @@ void ApplyStateSnapshot(std::string_view frame) {
             : std::numeric_limits<std::uint32_t>::max(),
         std::memory_order_release);
 
-    constexpr std::array<const char*, 7> permissions = {
+    constexpr std::array<const char*, 8> permissions = {
         "flip", "grab", "grind", "revert", "manual", "lip", "special",
+        "wallride",
     };
     std::uint32_t trick_permission_mask = 0;
     for (std::size_t index = 0; index < permissions.size(); ++index) {
@@ -518,7 +514,7 @@ bool IsTrickCategoryUnlocked(int category) {
     if (!HasStateSnapshot()) {
         return true;
     }
-    return category >= 0 && category < 7 &&
+    return category >= 0 && category < 8 &&
         (TrickPermissionMask() & (1u << category)) != 0;
 }
 

@@ -61,7 +61,7 @@ typedef struct {
 typedef struct {
 	int num_tabs;
 	int current_tab;
-	HBRUSH brush;	// used for drawing; brush with the tab's visuals
+	HBRUSH brush;	// used for drawing, brush with the tab's visuals
 } pgui_control_tabs;
 
 typedef struct {

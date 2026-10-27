@@ -14,6 +14,12 @@ bool AP_IsInit();
 
 void AP_Start();
 
+// AP packets arrive on the network thread and get queued for later.
+// An example of this is used in my UT99 client.
+void AP_SetNativePacketCallback(std::function<void(std::string)> callback);
+void AP_RequestSync();
+void AP_RequestStateRefresh();
+
 // AP_Shutdown resets the library state to before initialization, and doesn't just disconnect
 void AP_Shutdown();
 
@@ -95,10 +101,11 @@ void AP_DeathLinkSend();
 
 std::string AP_GetLocationName(int64_t);
 std::string AP_GetItemName(int64_t);
+std::vector<std::string> AP_GetItemNames();
 /* Message Management Types */
 
 enum struct AP_MessageType {
-    Plaintext, ItemSend, ItemRecv, Hint, Countdown
+    Plaintext, ItemSend, ItemRecv, Hint, Countdown, CommandResult
 };
 
 enum AP_MessagePartType {
@@ -107,7 +114,9 @@ enum AP_MessagePartType {
 
 struct AP_MessagePart {
     std::string text;
-    AP_MessagePartType type;
+    AP_MessagePartType type = AP_NormalText;
+    int flags = 0;
+    int player = -1;
 };
 struct AP_Message {
     virtual ~AP_Message() = default;
@@ -117,9 +126,9 @@ struct AP_Message {
 };
 
 struct AP_ItemSendMessage : AP_Message {
+    int flags = 0;
     std::string item;
     std::string recvPlayer;
-    int flags = 0;
 };
 
 struct AP_ItemRecvMessage : AP_Message {

@@ -58,7 +58,7 @@ def add_foundry_unlock_flag(source: bytes) -> bytes:
 
     # Vanilla omits Cruise Ship completely until SPECIAL_HAS_SEEN_SHIP is set.
     # AP needs a stable menu element that can be toggled in place, so remove
-    # that special-case field; its regular unlock flag still controls access.
+    # that special-case field, its regular unlock flag still controls access.
     special_assignment = (
         b"\x16"
         + struct.pack("<I", qb_checksum("special_flag"))

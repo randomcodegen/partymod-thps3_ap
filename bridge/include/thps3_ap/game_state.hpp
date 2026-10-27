@@ -8,7 +8,8 @@
 namespace thps3_ap {
 
 void ApplyStateSnapshot(std::string_view frame);
-void QueueDisplayMessage(std::string message, bool more = false);
+void QueueDisplayMessage(std::string message, bool more = false, bool log = true);
+void ClearDisplayMessages();
 bool TakeDisplayMessage(std::string& message, bool& more);
 void SetConnectionError(std::string message);
 std::string ConnectionError();

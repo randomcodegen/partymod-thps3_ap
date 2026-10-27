@@ -36,7 +36,7 @@ def guard_custom_skater_loads(source: bytes) -> bytes:
             raise ValueError(f"{wrapper} has an unexpected body")
         end = after_newline(start + len(spawn))
         guarded = (
-            b"\x25\x0e" + checksum_token("APCustomSkaterAllowed") + b"\x0f\x01"
+            b"\x25" + checksum_token("APCustomSkaterAllowed") + b"\x01"
             + spawn + b"\x01"
             + b"\x28\x01"
         )

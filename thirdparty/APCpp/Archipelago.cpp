@@ -6,6 +6,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <charconv>
+#include <limits>
 #include <random>
 #include <fstream>
 #include <json/json.h>
@@ -27,6 +29,39 @@ constexpr int AP_OFFLINE_SLOT = 1404;
 constexpr char const* AP_OFFLINE_NAME = "You";
 constexpr AP_NetworkVersion AP_DEFAULT_NETWORK_VERSION = {0,5,1}; // Default for compatibility reasons
 std::recursive_mutex state_mutex;
+std::function<void(std::string)> native_packet_callback;
+
+void AP_SetNativePacketCallback(std::function<void(std::string)> callback) {
+    std::lock_guard<std::recursive_mutex> lock(state_mutex);
+    native_packet_callback = callback;
+}
+
+std::string getLocationName(std::string game, int64_t id);
+AP_NetworkPlayer getPlayer(int team, int slot);
+
+void NativePacket(const Json::Value& packet) {
+    const std::string command = packet[0]["cmd"].asString();
+    if (command != "RoomInfo" && command != "Connected" && command != "ReceivedItems" &&
+        command != "RoomUpdate" && command != "LocationInfo" && command != "ConnectionRefused" && command.compare(0, 6, "Native") != 0)
+        return;
+    std::function<void(std::string)> callback;
+    Json::Value outgoing = packet;
+    {
+        std::lock_guard<std::recursive_mutex> lock(state_mutex);
+        callback = native_packet_callback;
+        if (callback && command == "ReceivedItems") {
+            for (auto& item : outgoing[0]["items"]) {
+                if (!item.isMember("location") || !item["location"].asInt64()) continue;
+                const auto sender = getPlayer(0, item["player"].asInt());
+                item["location_name"] = getLocationName(sender.game, item["location"].asInt64());
+            }
+        }
+    }
+    if (callback) {
+        Json::FastWriter json;
+        callback(json.write(outgoing));
+    }
+}
 bool shutting_down = false;
 
 //Setup Stuff
@@ -37,6 +72,16 @@ std::string connection_error;
 bool multiworld = true;
 bool isSSL = true;
 bool ssl_success = false;
+
+static bool plaintext_tls_error(const char* reason) {
+    if (reason && (strstr(reason, "certificate") || strstr(reason, "Certificate") ||
+                   strstr(reason, "X509") || strstr(reason, "hostname"))) return false;
+    return reason && (strstr(reason, "wrong version number") ||
+                      strstr(reason, "unknown protocol") ||
+                      strstr(reason, "packet length too long") ||
+                      strstr(reason, "SSL - An invalid SSL record was received"));
+}
+
 bool data_synced = false;
 int ap_player_id;
 std::string ap_player_name;
@@ -119,6 +164,13 @@ void localSetServerData(Json::Value req);
 std::string messagePartsToPlainText(const std::vector<AP_MessagePart>& messageParts);
 // PRIV Func Declarations End
 
+static void appendLocationParts(std::vector<AP_MessagePart>& parts, const std::string& game, const Json::Value& location) {
+    if (!location.isInt64()) return;
+    parts.push_back({" ("});
+    parts.push_back({getLocationName(game, location.asInt64()), AP_LocationText});
+    parts.push_back({")"});
+}
+
 template <typename Callback>
 void CallUnlocked(std::unique_lock<std::recursive_mutex>& lock, Callback callback) {
     lock.unlock();
@@ -136,6 +188,7 @@ void AP_Init(const char* ip, const char* game, const char* player_name, const ch
     if (shutting_down) return;
     multiworld = true;
     connection_error.clear();
+    ssl_success = false;
     
     uint64_t milliseconds_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     rando = std::mt19937(milliseconds_since_epoch);
@@ -155,19 +208,51 @@ void AP_Init(const char* ip, const char* game, const char* player_name, const ch
 
     //Connect to server
     ix::initNetSystem();
-    webSocket.setUrl("wss://" + ap_ip);
+    if (ap_ip.compare(0, 5, "ws://") == 0 || ap_ip.compare(0, 6, "wss://") == 0) {
+        isSSL = ap_ip.compare(0, 6, "wss://") == 0;
+        ap_ip.erase(0, isSSL ? 6 : 5);
+    } else isSSL = true;
+    webSocket.setUrl(std::string(isSSL ? "wss://" : "ws://") + ap_ip);
+    webSocket.setHandshakeTimeout(5);
+    webSocket.setMaxWaitBetweenReconnectionRetries(1000);
     webSocket.setOnMessageCallback([](const ix::WebSocketMessagePtr& msg)
         {
             if (msg->type == ix::WebSocketMessageType::Message)
             {
-                std::string request;
-                if (parse_response(msg->str, request)) {
-                    APSend(request);
+                // parse_response returns early for several commands. Process each
+                // element separately so batched AP messages never lose packets.
+                try {
+                    Json::Reader json;
+                    Json::Value packets;
+                    if (!json.parse(msg->str, packets) || !packets.isArray())
+                        throw std::runtime_error("Invalid AP JSON message");
+                    for (const auto& packet : packets) {
+                        if (!packet.isObject() || !packet["cmd"].isString())
+                            throw std::runtime_error("Invalid AP packet");
+                        Json::Value one(Json::arrayValue);
+                        one.append(packet);
+                        Json::FastWriter output;
+                        std::string request;
+                        if (parse_response(output.write(one), request)) APSend(request);
+                        NativePacket(one);
+                    }
+                } catch (const std::exception& error) {
+                    Json::Value packet;
+                    packet[0]["cmd"] = "NativeFatal";
+                    packet[0]["reason"] = error.what();
+                    NativePacket(packet);
                 }
             }
             else if (msg->type == ix::WebSocketMessageType::Open)
             {
+                std::lock_guard<std::recursive_mutex> lock(state_mutex);
+                if (shutting_down) return;
+                if (isSSL) ssl_success = true;
                 printf("AP: Connected to Archipelago\n");
+                Json::Value packet;
+                packet[0]["cmd"] = "NativeTransport";
+                packet[0]["url"] = webSocket.getUrl();
+                NativePacket(packet);
             }
             else if (msg->type == ix::WebSocketMessageType::Error || msg->type == ix::WebSocketMessageType::Close)
             {
@@ -179,11 +264,21 @@ void AP_Init(const char* ip, const char* game, const char* player_name, const ch
                     itr.second->status.store(AP_RequestStatus::Error, std::memory_order_release);
                 }
                 map_server_data.clear();
+                Json::Value packet;
+                const bool fallback = msg->type == ix::WebSocketMessageType::Error && isSSL && !ssl_success &&
+                                      plaintext_tls_error(msg->errorInfo.reason.c_str());
+                packet[0]["cmd"] = "NativeDisconnected";
+                packet[0]["reason"] = msg->errorInfo.reason;
+                packet[0]["fallback_pending"] = fallback;
+                NativePacket(packet);
                 printf("AP: Error connecting to Archipelago. Retries: %d\n", msg->errorInfo.retries-1);
-                if (msg->errorInfo.retries-1 >= 2 && isSSL && !ssl_success) {
-                    printf("AP: SSL connection failed. Attempting unencrypted...\n");
+                if (fallback) {
+                    printf("AP: TLS protocol mismatch. Retrying with ws://.\n");
                     webSocket.setUrl("ws://" + ap_ip);
                     isSSL = false;
+                    packet[0]["cmd"] = "NativeFallback";
+                    packet[0]["url"] = webSocket.getUrl();
+                    NativePacket(packet);
                 }
             }
         }
@@ -330,6 +425,7 @@ void AP_Shutdown() {
     map_location_id_name.clear();
     map_item_id_name.clear();
     resetItemValues = nullptr;
+    native_packet_callback = nullptr;
     getitemfunc = nullptr;
     checklocfunc = nullptr;
     locinfofunc = nullptr;
@@ -349,6 +445,7 @@ void AP_Shutdown() {
     map_slotdata_callback_mapintint.clear();
     slotdata_strings.clear();
     datapkg_cache = Json::objectValue;
+    datapkg_outdated_games.clear();
     sp_ap_root = Json::objectValue;
     shutting_down = false;
 }
@@ -374,7 +471,6 @@ void AP_SendItem(std::set<int64_t> const& locations) {
     std::unique_lock<std::recursive_mutex> lock(state_mutex);
     if (shutting_down) return;
     for (int64_t idx : locations) {
-        printf("AP: Checked '%s'.\n", getLocationName(ap_game, idx).c_str());
     }
     if (multiworld) {
         Json::Value req_t;
@@ -766,6 +862,16 @@ std::string AP_GetItemName(int64_t id) {
 }
 
 
+std::vector<std::string> AP_GetItemNames() {
+    std::lock_guard<std::recursive_mutex> lock(state_mutex);
+    std::vector<std::string> names;
+    if (shutting_down || !init) return names;
+    for (const auto& [key, name] : map_item_id_name)
+        if (key.first == ap_game) names.push_back(name);
+    return names;
+}
+
+
 void AP_SendBounce(AP_Bounce bounce) {
     std::lock_guard<std::recursive_mutex> lock(state_mutex);
     if (shutting_down) return;
@@ -1017,17 +1123,13 @@ bool parse_response(std::string msg, std::string &request) {
             if (printType == "ItemSend" || printType == "ItemCheat") {
                 if (getPlayer(0, root[i]["receiving"].asInt()).alias == getPlayer(0, ap_player_id).alias || getPlayer(0,root[i]["item"]["player"].asInt()).alias != getPlayer(0,ap_player_id).alias) continue;
                 AP_NetworkPlayer recv_player = getPlayer(0, root[i]["receiving"].asInt());
-                AP_NetworkPlayer send_player = getPlayer(0, root[i]["item"]["player"].asInt());
                 AP_ItemSendMessage* msg = new AP_ItemSendMessage;
                 msg->type = AP_MessageType::ItemSend;
+                msg->flags = root[i]["item"].get("flags", 0).asInt();
                 msg->item = getItemName(recv_player.game, root[i]["item"]["item"].asInt64());
                 msg->recvPlayer = recv_player.alias;
-                msg->flags = root[i]["item"]["flags"].asInt();
-                const std::string location = getLocationName(
-                    send_player.game, root[i]["item"]["location"].asInt64());
-				msg->messageParts = {{send_player.alias, AP_PlayerText}, {" sent "},
-                    {msg->item, AP_ItemText}, {" to "}, {msg->recvPlayer, AP_PlayerText},
-                    {" ("}, {location, AP_LocationText}, {")"}};
+				msg->messageParts = {{msg->item, AP_ItemText, msg->flags}, {" was sent to "}, {msg->recvPlayer, AP_PlayerText, 0, recv_player.slot}};
+                appendLocationParts(msg->messageParts, getPlayer(0, root[i]["item"]["player"].asInt()).game, root[i]["item"]["location"]);
                 msg->text = messagePartsToPlainText(msg->messageParts);
                 messageQueue.push_back(msg);
             } else if (printType == "Hint") {
@@ -1041,7 +1143,7 @@ bool parse_response(std::string msg, std::string &request) {
                 msg->location = getLocationName(send_player.game, root[i]["item"]["location"].asInt64());
                 msg->checked = root[i]["found"].asBool();
                 msg->text = std::string("Item ") + msg->item + std::string(" from ") + msg->sendPlayer + std::string(" to ") + msg->recvPlayer + std::string(" at ") + msg->location + std::string((msg->checked ? " (Checked)" : " (Unchecked)"));
-				msg->messageParts = {{"Item "}, {msg->item, AP_ItemText}, {" from "}, {msg->sendPlayer, AP_PlayerText}, {" to "}, {msg->recvPlayer, AP_PlayerText}, {" at "}, {msg->location, AP_LocationText}, {msg->checked ? " (Checked)" : " (Unchecked)"}};
+				msg->messageParts = {{"Item "}, {msg->item, AP_ItemText, root[i]["item"].get("flags", 0).asInt()}, {" from "}, {msg->sendPlayer, AP_PlayerText, 0, send_player.slot}, {" to "}, {msg->recvPlayer, AP_PlayerText, 0, recv_player.slot}, {" at "}, {msg->location, AP_LocationText}, {msg->checked ? " (Checked)" : " (Unchecked)"}};
                 messageQueue.push_back(msg);
             } else if (printType == "Countdown") {
                 AP_CountdownMessage* msg = new AP_CountdownMessage;
@@ -1052,13 +1154,35 @@ bool parse_response(std::string msg, std::string &request) {
                 messageQueue.push_back(msg);
             } else {
                 AP_Message* msg = new AP_Message;
+                if (printType == "CommandResult") msg->type = AP_MessageType::CommandResult;
                 msg->text = "";
                 for (auto itr : root[i]["data"]) {
-                    if (itr.get("type","").asString() == "player_id") {
-                        msg->text += getPlayer(0, itr["text"].asInt()).alias;
-                    } else if (itr.get("text","") != "") {
-                        msg->text += itr["text"].asString();
+                    if (!itr["text"].isString() && !itr["text"].isIntegral()) continue;
+                    AP_MessagePart part{itr["text"].asString()};
+                    const auto type = itr["type"].isString() ? itr["type"].asString() : "";
+                    if (type == "player_id" || type == "item_id" || type == "location_id") {
+                        std::int64_t id = 0;
+                        const auto parsed = std::from_chars(part.text.data(), part.text.data() + part.text.size(), id);
+                        if (parsed.ec == std::errc{} && parsed.ptr == part.text.data() + part.text.size()) {
+                            const int player = itr["player"].isInt() ? itr["player"].asInt() : ap_player_id;
+                            if (type == "player_id" && id >= 0 && id <= std::numeric_limits<int>::max()) {
+                                part.player = static_cast<int>(id); part.type = AP_PlayerText;
+                                part.text = getPlayer(0, part.player).alias;
+                            } else if (type == "item_id") {
+                                part.type = AP_ItemText; part.text = getItemName(getPlayer(0, player).game, id);
+                                part.flags = itr["flags"].isInt() ? itr["flags"].asInt() : 0;
+                            } else if (type == "location_id") {
+                                part.type = AP_LocationText; part.text = getLocationName(getPlayer(0, player).game, id);
+                            }
+                        }
                     }
+                    if (type == "player_name") part.type = AP_PlayerText;
+                    else if (type == "item_name") {
+                        part.type = AP_ItemText;
+                        part.flags = itr["flags"].isInt() ? itr["flags"].asInt() : 0;
+                    } else if (type == "location_name") part.type = AP_LocationText;
+                    msg->text += part.text;
+                    msg->messageParts.push_back(std::move(part));
                 }
                 messageQueue.push_back(msg);
             }
@@ -1102,14 +1226,9 @@ bool parse_response(std::string msg, std::string &request) {
                     msg->sendPlayer = sender.alias;
                     msg->location = root[i]["items"][j]["location"].asInt64();
                     msg->flags = root[i]["items"][j]["flags"].asInt();
-                    msg->text = std::string("Received ") + msg->item + std::string(" from ") + msg->sendPlayer;
-					msg->messageParts = {{"Received "}, {msg->item, AP_ItemText}, {" from "}, {msg->sendPlayer, AP_PlayerText}};
-                    if (msg->location > 0) {
-                        const std::string location = getLocationName(sender.game, msg->location);
-                        msg->text += std::string(" at ") + location;
-                        msg->messageParts.push_back({" at "});
-                        msg->messageParts.push_back({location, AP_LocationText});
-                    }
+					msg->messageParts = {{"Received "}, {msg->item, AP_ItemText, msg->flags}, {" from "}, {msg->sendPlayer, AP_PlayerText, 0, sender.slot}};
+                    appendLocationParts(msg->messageParts, sender.game, root[i]["items"][j]["location"]);
+                    msg->text = messagePartsToPlainText(msg->messageParts);
                     messageQueue.push_back(msg);
                 }
             }
@@ -1159,7 +1278,7 @@ bool parse_response(std::string msg, std::string &request) {
                     if (root[i]["tags"][j].asString() == "DeathLink") {
                         std::string source = root[i]["data"]["source"].asString();
                         
-                        // Suspicions confirmed ;-; But maybe we died, not them?
+                        // Suspicions confirmed. But maybe we died, not them?
                         if (source == ap_player_name) break; // We already paid our penance
                         deathlinkstat = true;
                         if (recvdeath) {
@@ -1206,6 +1325,29 @@ void APSend(std::string req) {
         return;
     }
     webSocket.send(req);
+}
+
+void AP_RequestSync() {
+    std::lock_guard<std::recursive_mutex> lock(state_mutex);
+    if (!shutting_down) APSend("[{\"cmd\":\"Sync\"}]");
+}
+
+void AP_RequestStateRefresh() {
+    std::lock_guard<std::recursive_mutex> lock(state_mutex);
+    if (shutting_down || !auth) return;
+    Json::Value request;
+    request[0]["cmd"] = "Connect";
+    request[0]["game"] = ap_game;
+    request[0]["name"] = ap_player_name;
+    request[0]["password"] = ap_passwd;
+    request[0]["uuid"] = ap_uuid;
+    request[0]["tags"] = Json::arrayValue;
+    request[0]["version"]["major"] = client_version.major;
+    request[0]["version"]["minor"] = client_version.minor;
+    request[0]["version"]["build"] = client_version.build;
+    request[0]["version"]["class"] = "Version";
+    request[0]["items_handling"] = 7;
+    APSend(writer.write(request));
 }
 
 void WriteFileJSON(Json::Value val, std::string path) {

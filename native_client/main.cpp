@@ -1,5 +1,8 @@
 #include "Archipelago.h"
 #include "thps3_ap/bridge_runtime.hpp"
+#include "thps3_ap/console.hpp"
+#include "thps3_ap/game_state.hpp"
+#include "thps3_ap/deathlink.hpp"
 #include <json/json.h>
 #include <windows.h>
 
@@ -11,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <filesystem>
 #include <map>
 #include <mutex>
 #include <ranges>
@@ -31,7 +35,10 @@ constexpr std::size_t kMaxFrame = 1024 * 1024;
 std::atomic_bool g_debug{false};
 
 void Debug(std::string_view message) {
-    if (g_debug) std::osyncstream(std::cerr) << "[debug] " << message << '\n';
+    if (g_debug) {
+        std::osyncstream(std::cerr) << "[debug] " << message << '\n';
+        thps3_ap::ConsoleDebug("[debug] " + std::string(message));
+    }
 }
 
 Json::StreamWriterBuilder CompactWriter() {
@@ -109,6 +116,11 @@ void SetSlotData(const char* key, const std::string& raw) {
         Json::Value value = ParseJson(raw);
         std::lock_guard lock(g_state.mutex);
         g_state.slot_data[key] = std::move(value);
+        if (std::string_view(key) == "death_link") {
+            thps3_ap::DeathLink().SetEnabled(g_state.slot_data[key].isBool()
+                ? g_state.slot_data[key].asBool()
+                : g_state.slot_data[key].isInt() && g_state.slot_data[key].asInt() != 0);
+        }
         if (std::string_view(key) == "collectible_markers_default" &&
             g_state.slot_data[key].isBool()) {
             g_state.collectible_markers_enabled =
@@ -309,6 +321,7 @@ Json::Value BuildSnapshot(
         {"Grind Tricks", "grind"}, {"Manual Tricks", "manual"},
         {"Lip Tricks", "lip"}, {"Reverts", "revert"},
         {"Special Tricks", "special"},
+        {"Wallrides", "wallride"},
     };
     for (const auto& [item, key] : tricks)
         payload["trick_permissions"][key] = counts.contains(item) && counts.at(item) > 0;
@@ -489,7 +502,7 @@ void SendGoalIfComplete() {
         if (send) g_state.goal_sent = true;
     }
     if (send) AP_StoryComplete();
-    if (send) Debug("completion requirement met; sent StatusUpdate");
+    if (send) Debug("completion requirement met, sent StatusUpdate");
 }
 
 bool ValidAssignment(const Json::Value& value) {
@@ -765,14 +778,17 @@ Json::Value GapMenu(
     const std::set<std::int64_t>& checked,
     const std::string& level) {
     Json::Value payload;
-    int done = 0, total = 0, row = 1;
+    int done = 0, total = 0, in_logic = 0, row = 1;
+    const bool show_out_of_logic = thps3_ap::ConsoleOutOfLogic();
     const auto items = ItemCounts(received_items);
     std::vector<const Json::Value*> visible;
     for (const auto& gap : slot["active_gaps"]) {
         if (gap["level"].asString() != level) continue;
         ++total;
         if (checked.contains(gap["location_id"].asInt64())) { ++done; continue; }
-        if (!GapInLogic(gap, items)) continue;
+        const bool accessible = GapInLogic(gap, items);
+        if (accessible) ++in_logic;
+        if (!accessible && !show_out_of_logic) continue;
         visible.push_back(&gap);
     }
     std::ranges::sort(visible, {}, [](const Json::Value* gap) {
@@ -791,7 +807,7 @@ Json::Value GapMenu(
     payload["count"] = row == 1 ? 1 : row - 1;
     const auto level_name = slot["levels"][level]["name"].asString();
     payload["title"] = level_name + " Gaps (" + std::to_string(done) + "/" +
-        std::to_string(done + visible.size()) + " (" + std::to_string(total) + "))";
+        std::to_string(done + in_logic) + " (" + std::to_string(total) + "))";
     return payload;
 }
 
@@ -936,10 +952,12 @@ void UpdateStorageResult() {
 
 constexpr bool IsServerItemMessage(
     AP_MessageType type, std::string_view sender) {
-    return type == AP_MessageType::ItemRecv && sender == "Archipelago";
+    return type == AP_MessageType::ItemRecv &&
+        (sender == "Archipelago" || sender == "__Server");
 }
 
 static_assert(IsServerItemMessage(AP_MessageType::ItemRecv, "Archipelago"));
+static_assert(IsServerItemMessage(AP_MessageType::ItemRecv, "__Server"));
 static_assert(!IsServerItemMessage(AP_MessageType::ItemRecv, "Skater"));
 
 constexpr std::string_view ItemColor(int flags) {
@@ -955,54 +973,18 @@ static_assert(ItemColor(0b100) == "&C5");
 std::string FormatItemMessage(
     const AP_Message& message, int flags, std::string_view slot_name) {
     std::string text;
+    const int own_slot = AP_GetPlayerID();
     for (const auto& part : message.messageParts) {
-        text += part.type == AP_ItemText ? ItemColor(flags) :
+        text += part.type == AP_ItemText ? ItemColor(part.flags ? part.flags : flags) :
             part.type == AP_PlayerText
-                ? (part.text == slot_name ? "&C7" : "&C2") :
+                ? ((part.player >= 0 ? part.player == own_slot : part.text == slot_name) ? "&C7" : "&C2") :
             part.type == AP_LocationText ? "&C6" : "&C3";
         text += part.text;
     }
     return text;
 }
 
-std::vector<std::string> SplitDisplayMessage(std::string_view text) {
-    constexpr std::size_t kMaxBytes = 80;
-    std::vector<std::string> chunks;
-    std::string active_color;
-    std::size_t offset = 0;
-    while (offset < text.size()) {
-        const std::size_t start = offset;
-        const std::string prefix = chunks.empty() ? "" : active_color;
-        std::string chunk = prefix;
-        std::size_t word_break = std::string_view::npos;
-        std::string color_at_word_break = active_color;
-        while (offset < text.size()) {
-            const bool color = offset + 2 < text.size() &&
-                text[offset] == '&' && text[offset + 1] == 'C';
-            const std::size_t token_size = color ? 3 : 1;
-            if (chunk.size() + token_size > kMaxBytes) break;
-            chunk.append(text.substr(offset, token_size));
-            if (color) active_color.assign(text.substr(offset, token_size));
-            offset += token_size;
-            if (!color && text[offset - 1] == ' ') {
-                word_break = offset;
-                color_at_word_break = active_color;
-            }
-        }
-        if (offset < text.size() && word_break != std::string_view::npos &&
-            word_break > start) {
-            chunk = prefix + std::string(text.substr(
-                start, word_break - start - 1));
-            offset = word_break;
-            active_color = std::move(color_at_word_break);
-        }
-        chunks.push_back(std::move(chunk));
-    }
-    return chunks;
-}
-
-void SendMessages(
-    Pipe& pipe, std::uint64_t& sequence, std::string_view slot_name) {
+void SendMessages(std::string_view slot_name) {
     while (AP_Message* message = AP_PopLatestMessage()) {
         auto* received_item = message->type == AP_MessageType::ItemRecv
             ? static_cast<AP_ItemRecvMessage*>(message) : nullptr;
@@ -1015,21 +997,9 @@ void SendMessages(
             ? FormatItemMessage(*received_item, received_item->flags, slot_name)
             : sent_item
                 ? FormatItemMessage(*sent_item, sent_item->flags, slot_name)
-            : message->text;
+            : message->messageParts.empty() ? message->text : FormatItemMessage(*message, 0, slot_name);
         AP_FreeMessage(message);
-        if (hide) continue;
-        for (char& character : text)
-            if (static_cast<unsigned char>(character) >= 0x80) character = '?';
-        Debug("display source: " + text);
-        auto chunks = SplitDisplayMessage(text);
-        for (std::size_t index = 0; index < chunks.size(); ++index) {
-            Debug("display chunk " + std::to_string(index + 1) + "/" +
-                std::to_string(chunks.size()) + ": " + chunks[index]);
-            Json::Value payload;
-            payload["text"] = std::move(chunks[index]);
-            payload["more"] = index + 1 < chunks.size();
-            pipe.Write(Frame("display_message", sequence++, std::move(payload)));
-        }
+        thps3_ap::ConsoleLog(text, !hide);
     }
 }
 
@@ -1047,17 +1017,110 @@ std::string ConnectionFailureMessage(std::string_view reason) {
     return "Archipelago connection failed: " + std::string(reason);
 }
 
-void Run(const std::string& slot_name) {
+void InitializeConnection(const std::string& server, const std::string& slot, const std::string& password);
+
+void RefreshConsoleNames() {
+    if (AP_GetDataPackageStatus() != AP_DataPackageSyncStatus::Synced) return;
+    const auto items = AP_GetItemNames();
+    std::set<std::int64_t> ids;
+    {
+        const std::lock_guard lock(g_state.mutex);
+        for (const auto* key : {"goal_locations", "active_gaps", "stat_point_locations", "deck_locations"})
+            for (const auto& location : g_state.slot_data[key])
+                if (location["location_id"].isInt64() && !location["precollected"].asBool()) ids.insert(location["location_id"].asInt64());
+    }
+    std::vector<std::string> locations;
+    for (const auto id : ids) {
+        auto name = AP_GetLocationName(id);
+        if (!name.empty()) locations.push_back(std::move(name));
+    }
+    auto& console = thps3_ap::InGameConsole(); const std::lock_guard lock(console.mutex);
+    if (console.items != items || console.locations != locations) {
+        console.items = items; console.locations = std::move(locations); ++console.revision;
+    }
+}
+
+void SaveConsoleConnection(const std::string& server, const std::string& slot) {
+    wchar_t exe[32768];
+    const DWORD length = GetModuleFileNameW(nullptr, exe, static_cast<DWORD>(std::size(exe)));
+    if (!length || length == std::size(exe)) return;
+    auto path = std::filesystem::path(exe).parent_path() / "partymod.ini";
+    { auto& console = thps3_ap::InGameConsole(); const std::lock_guard lock(console.mutex);
+        if (!console.config_path.empty()) path = console.config_path; }
+    // write only server/slot, runtime passwords stay in memory.
+    if (!WritePrivateProfileStringA("Archipelago", "Server", server.c_str(), path.string().c_str()) ||
+        !WritePrivateProfileStringA("Archipelago", "Slot", slot.c_str(), path.string().c_str()))
+        thps3_ap::ConsoleLog("Connected, but could not save server/slot in partymod.ini.");
+}
+
+void Run(std::string server, std::string slot_name, std::string password) {
     Pipe pipe(kDefaultPipe);
+    std::string staged_server = server, staged_slot = slot_name, bound_seed;
+    bool profile_bound = false;
+    std::string last_connection_error;
+    auto next_names_refresh = std::chrono::steady_clock::now();
+    const auto console_commands = [&] {
+        for (const auto& text : thps3_ap::TakeConsoleCommands()) {
+            const auto space = text.find(' ');
+            const auto command = text.substr(0, space);
+            const auto argument = space == std::string::npos ? std::string{} : text.substr(space + 1);
+            try {
+                if (command == "/help") thps3_ap::ConsoleLog(
+                    "/server host:port | /port number | /slot name | /password value\n"
+                    "/connect | /disconnect | /status | /quit | /clear\n"
+                    "/markers on/off/toggle | /collectibles on/off/toggle | /gaps next/all/off | /geometry on/off/toggle\n"
+                    "/gapmarkers bounds/tint/both/off | /outoflogic on/off (gap display only, AP logic stays fixed)\n"
+                    "/deathlink_amnesty X: send a DeathLink every X local bails (default 1).\n"
+                    "Chat and !commands go to Archipelago. Tab completes commands, !hint items and !hint_location checks.\n"
+                    "F1/Esc: console | arrows, Shift, Home/End: edit/select | Ctrl+A/C/V: select/copy/paste\n"
+                    "Up/Down: command history | Page Up/Down or mouse wheel: scroll messages.");
+                else if (command == "/server") {
+                    if (argument.empty()) thps3_ap::ConsoleLog("Server: " + staged_server);
+                    else if (thps3_ap::ValidConsoleServer(argument)) { staged_server = argument; thps3_ap::ConsoleLog("Server staged. /connect applies it."); }
+                    else thps3_ap::ConsoleLog("Invalid server. Use host:port, ws://host:port or wss://host:port.");
+                } else if (command == "/port") {
+                    const auto value = thps3_ap::ConsoleServerWithPort(staged_server, argument);
+                    if (argument.empty() || !thps3_ap::ValidConsoleServer(value)) thps3_ap::ConsoleLog("Port must be 1..65535.");
+                    else { staged_server = value; thps3_ap::ConsoleLog("Port staged. /connect applies it."); }
+                } else if (command == "/slot") {
+                    if (argument.empty()) thps3_ap::ConsoleLog("Slot: " + staged_slot);
+                    else if (argument.size() <= 255 && std::none_of(argument.begin(), argument.end(), [](unsigned char c) { return c < 32 || c == 127; })) {
+                        staged_slot = argument; thps3_ap::ConsoleLog("Slot staged. /connect applies it.");
+                    } else thps3_ap::ConsoleLog("Invalid slot name.");
+                } else if (command == "/password") {
+                    password = argument; thps3_ap::ConsoleLog(argument.empty() ? "Password cleared." : "Password set for the next connection.");
+                } else if (command == "/disconnect") {
+                    AP_Shutdown(); thps3_ap::SetConnectionError("");
+                    { auto& console = thps3_ap::InGameConsole(); const std::lock_guard lock(console.mutex); console.status = "disconnected"; ++console.revision; }
+                    thps3_ap::ConsoleLog("Disconnected. Earned checks remain queued locally.");
+                } else if (command == "/connect") {
+                    if (!thps3_ap::ValidConsoleServer(staged_server) || staged_slot.empty()) thps3_ap::ConsoleLog("Set a valid /server and /slot first.");
+                    else if (profile_bound && (staged_server != server || staged_slot != slot_name))
+                        thps3_ap::ConsoleLog("Restart THPS3 before changing server or slot. Current progress belongs to this AP profile. Settings remain staged.");
+                    else {
+                        AP_Shutdown(); server = staged_server; slot_name = staged_slot;
+                        if (!profile_bound) { const std::lock_guard lock(g_state.mutex); g_state.slot_data = Json::Value{Json::objectValue}; }
+                        thps3_ap::SetConnectionError("");
+                        last_connection_error.clear();
+                        InitializeConnection(server, slot_name, password);
+                        { auto& console = thps3_ap::InGameConsole(); const std::lock_guard lock(console.mutex); console.status = "connecting"; ++console.revision; }
+                        thps3_ap::ConsoleLog("Connecting to " + server + " as " + slot_name + '.');
+                        next_names_refresh = std::chrono::steady_clock::now();
+                    }
+                } else if (command == "/status") {
+                    std::size_t pending = 0; { const std::lock_guard lock(g_state.mutex); pending = g_state.pending_locations.size(); }
+                    thps3_ap::ConsoleLog(std::string(ConnectionStatusName(AP_GetConnectionStatus())) + " | " + server + " | " + slot_name + " | queued checks: " + std::to_string(pending));
+                } else if (text.starts_with('/')) thps3_ap::ConsoleLog("Unknown local command. Use /help.");
+                else if (AP_GetConnectionStatus() == AP_ConnectionStatus::Authenticated) AP_Say(text);
+                else thps3_ap::ConsoleLog("Chat requires an authenticated AP connection. Use /connect.");
+            } catch (const std::exception& error) { thps3_ap::ConsoleLog(std::string("Console: ") + error.what()); }
+        }
+    };
     std::uint64_t sequence = 0;
     auto last_status = AP_ConnectionStatus::Disconnected;
     auto next_pending_send = std::chrono::steady_clock::now();
-    std::string last_connection_error;
     while (g_running) {
-        RequestStorageIfReady();
-        UpdateStorageResult();
-        StoreMedalResultsIfRequested();
-        ReplayEarnedMedalsIfRequested();
+        console_commands();
         if (!pipe.Connect()) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
             continue;
@@ -1069,10 +1132,7 @@ void Run(const std::string& slot_name) {
         if (!pipe.Write(Frame("hello", sequence++, std::move(hello)))) { pipe.Close(); continue; }
 
         while (g_running) {
-            RequestStorageIfReady();
-            UpdateStorageResult();
-            StoreMedalResultsIfRequested();
-            ReplayEarnedMedalsIfRequested();
+            console_commands();
             AP_RoomInfo room;
             const auto status = AP_GetConnectionStatus();
             if (status != last_status) {
@@ -1082,17 +1142,36 @@ void Run(const std::string& slot_name) {
                 if (status == AP_ConnectionStatus::Authenticated)
                     next_pending_send = std::chrono::steady_clock::now();
                 last_status = status;
+                auto& console = thps3_ap::InGameConsole();
+                { const std::lock_guard lock(console.mutex); console.status = ConnectionStatusName(status); ++console.revision; }
+                thps3_ap::ConsoleLog("Archipelago: " + std::string(ConnectionStatusName(status)));
+                if (status == AP_ConnectionStatus::Authenticated) SaveConsoleConnection(server, slot_name);
             }
             const std::string connection_error = AP_GetConnectionError();
             if (!connection_error.empty() && connection_error != last_connection_error) {
+                thps3_ap::ConsoleLog(ConnectionFailureMessage(connection_error));
                 Json::Value payload;
                 payload["message"] = ConnectionFailureMessage(connection_error);
                 if (!pipe.Write(Frame("error", sequence++, std::move(payload)))) break;
                 last_connection_error = connection_error;
             }
             const bool authenticated = status == AP_ConnectionStatus::Authenticated;
+            thps3_ap::DeathLink().SetConnected(authenticated);
+            while (thps3_ap::DeathLink().TakeSend()) thps3_ap::SendDeathLink(slot_name);
             const bool have_room = AP_GetRoomInfo(&room) == 0;
+            if (authenticated && have_room && profile_bound && room.seed_name != bound_seed) {
+                AP_Shutdown();
+                thps3_ap::ConsoleLog("This server now has a different seed. Restart THPS3 before using it. Current progress is retained.");
+                continue;
+            }
+            RequestStorageIfReady();
+            UpdateStorageResult();
+            StoreMedalResultsIfRequested();
+            ReplayEarnedMedalsIfRequested();
             const auto now = std::chrono::steady_clock::now();
+            if (authenticated && now >= next_names_refresh) {
+                RefreshConsoleNames(); next_names_refresh = now + std::chrono::seconds(2);
+            }
             if (authenticated && now >= next_pending_send) {
                 SendPendingLocations();
                 next_pending_send = now + std::chrono::seconds(1);
@@ -1128,13 +1207,14 @@ void Run(const std::string& slot_name) {
                             appearance_loaded, stat_assignment_loaded,
                             score_bonus_items_applied,
                             score_bonus_storage_loaded)))) break;
+                    profile_bound = true; bound_seed = room.seed_name;
                 } catch (const std::exception& error) {
                     Json::Value payload;
                     payload["message"] = error.what();
                     if (!pipe.Write(Frame("error", sequence++, std::move(payload)))) break;
                 }
             }
-            SendMessages(pipe, sequence, slot_name);
+            SendMessages(slot_name);
 
             std::vector<std::string> frames;
             if (!pipe.ReadFrames(frames)) break;
@@ -1190,19 +1270,17 @@ void Run(const std::string& slot_name) {
     }
 }
 
-void RunClient(
+void InitializeConnection(
     const std::string& server,
     const std::string& slot,
     const std::string& password) {
     thps3_ap::StartupBreadcrumb("apcpp_thread_enter");
-    g_running = true;
-    {
-        std::lock_guard lock(g_state.mutex);
-        g_state.pending_locations.clear();
-    }
     AP_NetworkVersion version{0, 6, 7};
     AP_SetClientVersion(&version);
     AP_Init(server.c_str(), kGame, slot.c_str(), password.c_str());
+    thps3_ap::DeathLink().SetConnected(false);
+    thps3_ap::DeathLink().SetEnabled(false);
+    thps3_ap::InitializeDeathLink(slot);
     AP_SetItemClearCallback(ClearItems);
     AP_SetItemRecvCallback(ReceiveItem);
     AP_SetLocationCheckedCallback(CheckLocation);
@@ -1210,7 +1288,7 @@ void RunClient(
     const char* raw_keys[] = {"selected_skater", "levels", "goal_locations", "goal_unlocks",
         "active_gaps", "stat_point_locations", "stat_points_are_locations",
         "hidden_decks_are_locations", "deck_locations", "completion_goal",
-        "collectible_markers_default"};
+        "collectible_markers_default", "death_link"};
     AP_RegisterSlotDataIntCallback("protocol_version", [](int value) {
         std::lock_guard lock(g_state.mutex);
         g_state.slot_data["protocol_version"] = value;
@@ -1221,7 +1299,17 @@ void RunClient(
     Debug("starting APCpp client");
     thps3_ap::StartupBreadcrumb("apcpp_start");
     AP_Start();
-    Run(slot);
+}
+
+void RunClient(const std::string& server, const std::string& slot, const std::string& password) {
+    g_running = true;
+    thps3_ap::ConsoleLog("F1: Archipelago console. Use /help for commands.");
+    if (thps3_ap::ValidConsoleServer(server) && !slot.empty()) InitializeConnection(server, slot, password);
+    else {
+        thps3_ap::ConsoleLog("Set /server and /slot, then /connect. Use /password for a protected room.");
+        thps3_ap::SetConnectionError("Archipelago connection settings are missing or invalid.");
+    }
+    Run(server, slot, password);
     AP_Shutdown();
 }
 
@@ -1243,7 +1331,7 @@ extern "C" void THPS3AP_StartEmbeddedClient(
     const char* slot,
     const char* password,
     BOOL debug) {
-    if (!server || !*server || !slot || !*slot || g_embedded_started.exchange(true)) return;
+    if (!server || !slot || g_embedded_started.exchange(true)) return;
     g_debug = debug != FALSE;
     g_embedded_server = server;
     g_embedded_slot = slot;
