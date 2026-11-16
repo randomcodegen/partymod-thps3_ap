@@ -1,0 +1,23 @@
+diff --git a/ixwebsocket/IXSocketMbedTLS.cpp b/ixwebsocket/IXSocketMbedTLS.cpp
+--- a/ixwebsocket/IXSocketMbedTLS.cpp
++++ b/ixwebsocket/IXSocketMbedTLS.cpp
+@@ -48,9 +48,16 @@ namespace ix
+     bool SocketMbedTLS::loadSystemCertificates(std::string& errorMsg)
+     {
+ #ifdef _WIN32
+-        DWORD flags = CERT_STORE_READONLY_FLAG | CERT_STORE_OPEN_EXISTING_FLAG |
+-                      CERT_SYSTEM_STORE_CURRENT_USER;
+-        HCERTSTORE systemStore = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, flags, L"Root");
++        const DWORD flags = CERT_STORE_READONLY_FLAG | CERT_STORE_OPEN_EXISTING_FLAG;
++        HCERTSTORE systemStore =
++            CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0,
++                          flags | CERT_SYSTEM_STORE_CURRENT_USER, L"Root");
++        // Wine may exclude the machine roots when the current user's Root key is absent.
++        if (!systemStore && GetLastError() == ERROR_FILE_NOT_FOUND)
++        {
++            systemStore = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0,
++                                        flags | CERT_SYSTEM_STORE_LOCAL_MACHINE, L"Root");
++        }
+ 
+         if (!systemStore)
+         {

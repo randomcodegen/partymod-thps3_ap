@@ -3,20 +3,6 @@
 This fork embeds the Archipelago client and THPS3 bridge in PartyMod 1.1.6's
 `partymod.dll`.
 
-## Build
-
-Requirements: Visual Studio 2022 with C++ support, CMake, Git, and vcpkg.
-Set `VCPKG_ROOT` to the vcpkg checkout, then run:
-
-```powershell
-cmake --preset windows-x86-debug
-cmake --build --preset windows-x86-release
-ctest --test-dir build/partymod-x86 -C Release --output-on-failure
-```
-
-APCpp source is bundled in `thirdparty/APCpp`.  
-vcpkg supplies SDL2, IXWebSocket, and JsonCpp.  
-Dependency and license details are in `docs/THIRD_PARTY.md`.
 
 ## Install
 
@@ -84,3 +70,26 @@ Enable `death_link: true` in your THPS3 YAML before generating a seed to share b
 Incoming DeathLinks make your player bail and wait through menus and pauses until gameplay resumes.
 
 `/deathlink_amnesty X` sends one DeathLink every **X local bails**, defaulting to 1.
+
+## Build
+
+Requirements: Visual Studio 2022 with C++ support, CMake, Git, and vcpkg.
+Set `VCPKG_ROOT` to the vcpkg checkout, then run:
+
+```powershell
+cmake --preset windows-x86-debug
+cmake --build --preset windows-x86-release
+ctest --test-dir build/partymod-x86 -C Release --output-on-failure
+```
+
+APCpp source is bundled in `thirdparty/APCpp`.  
+vcpkg supplies SDL2, IXWebSocket, and JsonCpp.  
+Dependency and license details are in `docs/THIRD_PARTY.md`.
+
+After changing gap names, IDs, or requirements in the APWorld, run this from
+the Archipelago checkout and rebuild the client. Update the destination to
+point to your client checkout.
+
+```powershell
+python -c "from worlds.thps3.gap_catalog import write_native_catalog; import sys; write_native_catalog(sys.argv[1])" "../partymod-thps3_ap/native_client/gap_catalog.inc"
+```

@@ -6,7 +6,7 @@ The combined DLL is built from:
 | --- | --- | --- |
 | PartyMod | v1.1.6, commit `60664e11aec2ccc60a9abf255ca869dc9587cd47` | MIT (`LICENSE`) |
 | APCpp | `projects/APCpp` working-copy snapshot, based on `5eb74d0ee8df27fa1033c2c38d3e03ab1c951241` | LGPL-2.1 (`thirdparty/APCpp/LICENSE`) |
-| IXWebSocket | 11.4.5 | BSD-3-Clause (`thirdparty/licenses/ixwebsocket.txt`) |
+| IXWebSocket | 11.4.5 with a Windows root-store fallback for Proton | BSD-3-Clause (`thirdparty/licenses/ixwebsocket.txt`) |
 | JsonCpp | 1.9.6 | Public Domain/MIT (`thirdparty/licenses/jsoncpp.txt`) |
 | SDL2 | 2.30.11 | zlib (`thirdparty/licenses/sdl2.txt`) |
 | mbedTLS | 3.6.1, via IXWebSocket | Apache-2.0/GPL-2.0-or-later (`thirdparty/licenses/mbedtls.txt`) |
@@ -20,6 +20,8 @@ APCpp's corresponding source is included in `thirdparty/APCpp`.
 The PartyMod fork contains the complete source and build files needed to modify APCpp and relink the DLL.  
 Set `VCPKG_ROOT` and use the commands in `ARCHIPELAGO.md`.  
 The vcpkg baseline in `vcpkg.json` pins the package recipes used for the build.
+The IXWebSocket overlay in `thirdparty/vcpkg-ports/ixwebsocket` applies the Wine TLS
+fix when vcpkg builds the dependency.
 
 Upstreams:
 

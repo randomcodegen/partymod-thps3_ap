@@ -809,11 +809,6 @@ extern "C" BOOL THPS3AP_ProcessConsoleEvent(const void *raw) {
   }
   if (!state.open)
     return FALSE;
-  if (event.type == SDL_WINDOWEVENT &&
-      event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
-    ToggleConsole(state);
-    return FALSE;
-  }
   if (event.type == SDL_TEXTINPUT) {
     input.Insert(event.text.text);
     tab_active = false;

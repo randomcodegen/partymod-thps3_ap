@@ -321,6 +321,16 @@ int main(int argc, char **argv) {
   state.scroll = 0;
   Key(SDLK_PAGEUP);
   assert(state.scroll == 8);
+  Text("/sta");
+  SDL_Event focus{};
+  focus.type = SDL_WINDOWEVENT;
+  focus.window.windowID = SDL_GetWindowID(window);
+  focus.window.event = SDL_WINDOWEVENT_FOCUS_LOST;
+  assert(!THPS3AP_ProcessConsoleEvent(&focus));
+  assert(state.open && THPS3AP_ConsoleCapturesInput() && state.scroll == 8);
+  focus.window.event = SDL_WINDOWEVENT_FOCUS_GAINED;
+  assert(!THPS3AP_ProcessConsoleEvent(&focus));
+  assert(state.open && SDL_IsTextInputActive());
   ConsoleLog("while reading");
   assert(state.scroll == 9);
   Key(SDLK_PAGEDOWN);
@@ -330,7 +340,7 @@ int main(int argc, char **argv) {
   wheel.wheel.y = -1;
   assert(THPS3AP_ProcessConsoleEvent(&wheel));
   assert(state.scroll == 0);
-  Submit("/status");
+  Submit("tus");
   auto commands = TakeConsoleCommands();
   assert(commands.size() == 1 && commands.front() == "/status");
   Submit("/password super-secret");

@@ -1,4 +1,5 @@
 #include "Archipelago.h"
+#include "gap_catalog.hpp"
 #include "thps3_ap/bridge_runtime.hpp"
 #include "thps3_ap/console.hpp"
 #include "thps3_ap/game_state.hpp"
@@ -115,6 +116,17 @@ void SetSlotData(const char* key, const std::string& raw) {
     try {
         Json::Value value = ParseJson(raw);
         std::lock_guard lock(g_state.mutex);
+        if (std::string_view(key) == "gap_selection") {
+            if (g_state.slot_data["protocol_version"].asInt() != 2) return;
+            key = "active_gaps";
+            g_state.slot_data.removeMember("gap_selection_error");
+            try {
+                value = thps3_ap::ExpandGapSelection(value);
+            } catch (const std::exception& error) {
+                value = Json::Value{};
+                g_state.slot_data["gap_selection_error"] = error.what();
+            }
+        }
         g_state.slot_data[key] = std::move(value);
         if (std::string_view(key) == "death_link") {
             thps3_ap::DeathLink().SetEnabled(g_state.slot_data[key].isBool()
@@ -278,12 +290,17 @@ Json::Value BuildSnapshot(
     bool stat_assignment_loaded = false,
     std::uint32_t score_bonus_items_applied = 0,
     bool score_bonus_storage_loaded = false) {
-    Require(slot["protocol_version"].asInt() == 1, "slot protocol version must be 1");
+    const auto protocol = slot["protocol_version"].asInt();
+    Require(protocol == 1 || protocol == 2, "Unsupported THPS3 slot data version.");
     Require(slot["selected_skater"].isObject(), "selected_skater is missing");
     Require(slot["levels"].isObject(), "levels is missing");
     Require(slot["goal_locations"].isArray(), "goal_locations is missing");
     Require(slot["goal_unlocks"].isArray(), "goal_unlocks is missing");
-    Require(slot["active_gaps"].isArray(), "active_gaps is missing");
+    if (protocol == 2) {
+        const auto error = slot["gap_selection_error"].asString();
+        Require(error.empty(), error);
+    }
+    Require(slot["active_gaps"].isArray(), "Active gap selection is missing.");
     Require(slot["stat_points_are_locations"].isBool(),
         "stat_points_are_locations is missing");
     Require(slot["stat_point_locations"].isArray(), "stat_point_locations is missing");
@@ -497,7 +514,8 @@ void SendGoalIfComplete() {
     bool send = false;
     {
         std::lock_guard lock(g_state.mutex);
-        send = !g_state.goal_sent && g_state.slot_data["completion_goal"].isObject() &&
+        send = !g_state.goal_sent && g_state.slot_data["active_gaps"].isArray() &&
+            g_state.slot_data["completion_goal"].isObject() &&
             IsComplete(g_state.slot_data, g_state.checked_locations);
         if (send) g_state.goal_sent = true;
     }
@@ -1286,7 +1304,7 @@ void InitializeConnection(
     AP_SetLocationCheckedCallback(CheckLocation);
     AP_RegisterSetReplyCallback(ReceiveStorageReply);
     const char* raw_keys[] = {"selected_skater", "levels", "goal_locations", "goal_unlocks",
-        "active_gaps", "stat_point_locations", "stat_points_are_locations",
+        "active_gaps", "gap_selection", "stat_point_locations", "stat_points_are_locations",
         "hidden_decks_are_locations", "deck_locations", "completion_goal",
         "collectible_markers_default", "death_link"};
     AP_RegisterSlotDataIntCallback("protocol_version", [](int value) {

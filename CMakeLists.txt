@@ -84,6 +84,14 @@ if(MSVC)
 endif()
 
 if(BUILD_TESTING)
+	add_executable(thps3_ap_gap_catalog_test tests/gap_catalog_test.cpp)
+	target_compile_features(thps3_ap_gap_catalog_test PRIVATE cxx_std_20)
+	target_link_libraries(thps3_ap_gap_catalog_test PRIVATE JsonCpp::JsonCpp)
+	if(MSVC)
+		target_compile_options(thps3_ap_gap_catalog_test PRIVATE /UNDEBUG)
+	endif()
+	add_test(NAME gap_catalog COMMAND thps3_ap_gap_catalog_test)
+
 	add_executable(thps3_ap_deathlink_test
 		"${THPS3_AP_ROOT}/tests/deathlink_test.cpp"
 		"${THPS3_AP_ROOT}/bridge/src/deathlink.cpp"
